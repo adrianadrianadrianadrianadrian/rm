@@ -1176,12 +1176,18 @@ typedef struct statement {
     };
 } statement;
 
-int parse_return_statement(struct token_buffer *s, struct expression *out)
+int parse_return_statement(struct token_buffer *s, struct statement *out)
 {
     struct token tmp = {0};
+    struct expression expression = {0};
     if (!get_and_expect_token_where(s, &tmp, is_return_keyword)) return 0;
-    if (!parse_expression(s, out))                               return 0;
+    if (!parse_expression(s, &expression))                       return 0;
     if (!get_and_expect_token(s, &tmp, SEMICOLON))               return 0;
+
+    *out = (struct statement) {
+        .kind = RETURN_STATEMENT,
+        .return_expression = expression
+    };
     return 1;
 }
 
