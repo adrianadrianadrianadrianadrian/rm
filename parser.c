@@ -118,7 +118,10 @@ enum token_type {
     COMMA,
     PIPE,
     CHAR_LITERAL,
-    STR_LITERAL
+    STR_LITERAL,
+    STAR,
+    AND,
+    NUMERIC
 };
 
 enum keyword_type {
@@ -127,7 +130,9 @@ enum keyword_type {
     STRUCT,
     IF,
     WHILE,
-    RETURN
+    RETURN,
+    BOOLEAN_TRUE,
+    BOOLEAN_FALSE
 };
 
 enum paren_type {
@@ -142,7 +147,9 @@ enum math_op_type {
     GREATER,
     LESS,
     MOD,
-    DIV
+    DIV,
+    PLUS,
+    MINUS
 };
 
 typedef struct token {
@@ -152,6 +159,7 @@ typedef struct token {
         enum paren_type paren_type;
         enum math_op_type math_op_type;
         enum keyword_type keyword_type;
+        double numeric;
     };
     int position;
 } token;
@@ -159,113 +167,6 @@ typedef struct token {
 LIST(token);
 CREATE_LIST(token);
 APPEND_LIST(token);
-
-void display_token(struct token token) {
-    switch (token.token_type) {
-        case SEMICOLON:
-            printf(";");
-            return;
-        case COLON:
-            printf(":");
-            return;
-        case IDENTIFIER:
-            printf("%s", token.identifier->data);
-            return;
-        case PAREN_OPEN:
-        {
-            switch (token.paren_type) {
-                case ROUND:
-                    printf("(");
-                    return;
-                case CURLY:
-                    printf("{");
-                    return;
-                case SQUARE:
-                    printf("[");
-                    return;
-            }
-            return;
-        }
-        case PAREN_CLOSE:
-        {
-            switch (token.paren_type) {
-                case ROUND:
-                    printf(")");
-                    return;
-                case CURLY:
-                    printf("}");
-                    return;
-                case SQUARE:
-                    printf("]");
-                    return;
-            }
-            return;
-        }
-        case ARROW:
-            printf("->");
-            return;
-        case MATH_OPERATOR:
-        {
-            switch (token.math_op_type) {
-                case EQ:
-                    printf("=");
-                    return;
-                case BANG:
-                    printf("!");
-                    return;
-                case GREATER:
-                    printf(">");
-                    return;
-                case LESS:
-                    printf("<");
-                    return;
-                case MOD:
-                    printf("%%");
-                    return;
-                case DIV:
-                    printf("/");
-                    return;
-            }
-            return;
-        }
-        case KEYWORD:
-        {
-            switch (token.keyword_type) {
-                case FN:
-                    printf("fn");
-                    return;
-                case ENUM:
-                    printf("enum");
-                    return;
-                case STRUCT:
-                    printf("struct");
-                    return;
-                case IF:
-                    printf("if");
-                    return;
-                case WHILE:
-                    printf("while");
-                    return;
-                case RETURN:
-                    printf("return");
-                    return;
-            }
-            return;
-        }
-        case COMMA:
-            printf(",");
-            return;
-        case PIPE:
-            printf("|");
-            return;
-        case CHAR_LITERAL:
-            printf("%c", token.identifier->data[0]);
-            return;
-        case STR_LITERAL:
-            printf("%s", token.identifier->data);
-            return;
-    }
-}
 
 int is_keyword(struct list_char *ident, enum keyword_type *out) {
     if (strcmp(ident->data, "fn") == 0) {
@@ -295,6 +196,16 @@ int is_keyword(struct list_char *ident, enum keyword_type *out) {
 
     if (strcmp(ident->data, "return") == 0) {
         *out = RETURN;
+        return 1;
+    }
+
+    if (strcmp(ident->data, "true") == 0) {
+        *out = BOOLEAN_TRUE;
+        return 1;
+    }
+
+    if (strcmp(ident->data, "false") == 0) {
+        *out = BOOLEAN_FALSE;
         return 1;
     }
 
@@ -338,6 +249,9 @@ int is_special_char(char c) {
         case '|':
         case '\'':
         case '"':
+        case '*':
+        case '+':
+        case '&':
             return 1;
         default:
             return 0;
@@ -460,6 +374,20 @@ int next_token(struct file_buffer *b, struct token *out) {
                 };
                 return 1;
             }
+            case '*': {
+                *out = (struct token) {
+                    .token_type = STAR,
+                    .position = b->current_position
+                };
+                return 1;
+            }
+            case '&': {
+                *out = (struct token) {
+                    .token_type = AND,
+                    .position = b->current_position
+                };
+                return 1;
+            }
             case '\'': {
                 int char_start_position = b->current_position;
                 struct list_char *c = malloc(sizeof(*c));
@@ -489,16 +417,32 @@ int next_token(struct file_buffer *b, struct token *out) {
                 };
                 return 1;
             }
-            case '-': {
-                int arrow_start_position = b->current_position;
-                int success = read_file_buffer(b, 1, &test);
-                if (!success || test.value != '>') {
-                    seek_back(b, 2);
-                    return 0;
-                }
+            case '+': {
                 *out = (struct token) {
-                    .token_type = ARROW,
-                    .position = arrow_start_position
+                    .token_type = MATH_OPERATOR,
+                    .math_op_type = PLUS,
+                    .position = b->current_position
+                };
+                return 1;
+            }
+            case '-': {
+                int start_position = b->current_position;
+                if (read_file_buffer(b, 1, &test)) {
+                    if (test.value == '>') {
+                        *out = (struct token) {
+                            .token_type = ARROW,
+                            .position = start_position
+                        };
+                        return 1;
+                    } else {
+                        seek_back(b, 1);
+                    }
+                }
+
+                *out = (struct token) {
+                    .token_type = MATH_OPERATOR,
+                    .math_op_type = MINUS,
+                    .position = b->current_position
                 };
                 return 1;
             }
@@ -522,11 +466,21 @@ int next_token(struct file_buffer *b, struct token *out) {
                         .position = start_position
                     };
                 } else {
-                    *out = (struct token) {
-                        .token_type = IDENTIFIER,
-                        .identifier = ident,
-                        .position = start_position
-                    };
+                    char *end = NULL;
+                    double parsed = strtod(ident->data, &end);
+                    if (end == NULL || *end != ident->data[ident->size]) {
+                        *out = (struct token) {
+                            .token_type = IDENTIFIER,
+                            .identifier = ident,
+                            .position = start_position
+                        };
+                    } else {
+                        *out = (struct token) {
+                            .token_type = NUMERIC,
+                            .numeric = parsed,
+                            .position = start_position
+                        };
+                    }
                 }
 
                 return 1;
@@ -656,8 +610,24 @@ int is_math_bang(struct token *t) {
     return t->token_type == MATH_OPERATOR && t->math_op_type == BANG;
 }
 
+int is_math_minus(struct token *t) {
+    return t->token_type == MATH_OPERATOR && t->math_op_type == MINUS;
+}
+
+int is_math_plus(struct token *t) {
+    return t->token_type == MATH_OPERATOR && t->math_op_type == PLUS;
+}
+
 int is_return_keyword(struct token *t) {
     return t->token_type == KEYWORD && t->keyword_type == RETURN;
+}
+
+int is_keyword_true(struct token *t) {
+    return t->token_type == KEYWORD && t->keyword_type == BOOLEAN_TRUE;
+}
+
+int is_keyword_false(struct token *t) {
+    return t->token_type == KEYWORD && t->keyword_type == BOOLEAN_FALSE;
 }
 
 // parsing
@@ -873,7 +843,9 @@ int parse_type(struct token_buffer *s,
 enum expression_kind {
     LITERAL_EXPRESSION = 1,
     UNARY_EXPRESSION,
-    BINARY_EXPRESSION
+    BINARY_EXPRESSION,
+    GROUP_EXPRESSION,
+    FUNCTION_EXPRESSION
 };
 
 enum literal_expression_kind {
@@ -893,8 +865,24 @@ struct literal_expression {
     };
 };
 
+enum binary_operator {
+    PLUS_BINARY = 1,
+    OR_BINARY,
+    AND_BINARY,
+    BITWISE_OR_BINARY,
+    BITWISE_AND_BINARY
+};
+
+struct binary_expression {
+    enum binary_operator binary_op;
+    struct expression *l;
+    struct expression *r;
+};
+
 enum unary_operator {
     BANG_UNARY = 1,
+    STAR_UNARY,
+    MINUS_UNARY
 };
 
 struct unary_expression {
@@ -902,21 +890,33 @@ struct unary_expression {
     struct expression *expression;
 };
 
+struct function_expression {
+    struct list_char *function_name;
+    struct list_expression *params;
+};
+
 typedef struct expression {
     enum expression_kind kind;
     union {
         struct unary_expression unary;
         struct literal_expression literal;
+        struct expression *grouped;
+        struct binary_expression binary;
+        struct function_expression function;
     };
 } expression;
+
+LIST(expression);
+CREATE_LIST(expression);
+APPEND_LIST(expression);
+
+int parse_expression(struct token_buffer *s, struct expression *out);
 
 int parse_boolean_literal_expression(struct token_buffer *s,
                                      struct literal_expression *out)
 {
     struct token tmp = {0};
-    if (!get_and_expect_token(s, &tmp, IDENTIFIER)) return 0;
-
-    if (strcmp(tmp.identifier->data, "true") == 0) {
+    if (get_and_expect_token_where(s, &tmp, is_keyword_true)) {
         *out = (struct literal_expression) {
             .kind = LITERAL_BOOLEAN,
             .boolean = 1
@@ -924,7 +924,7 @@ int parse_boolean_literal_expression(struct token_buffer *s,
         return 1;
     }
 
-    if (strcmp(tmp.identifier->data, "false") == 0) {
+    if (get_and_expect_token_where(s, &tmp, is_keyword_false)) {
         *out = (struct literal_expression) {
             .kind = LITERAL_BOOLEAN,
             .boolean = 0
@@ -954,17 +954,11 @@ int parse_numeric_literal_expression(struct token_buffer *s,
                                      struct literal_expression *out)
 {
     struct token tmp = {0};
-    if (!get_token_type(s, &tmp, IDENTIFIER)) return 0;
-    char *end = NULL;
-    double parsed = strtod(tmp.identifier->data, &end);
-    if (end == NULL || *end != tmp.identifier->data[tmp.identifier->size]) {
-        seek_back_token(s, 1);
-        return 0;
-    }
+    if (!get_token_type(s, &tmp, NUMERIC)) return 0;
 
     *out = (struct literal_expression) {
         .kind = LITERAL_NUMERIC,
-        .numeric = parsed
+        .numeric = tmp.numeric
     };
 
     return 1;
@@ -1002,14 +996,88 @@ int parse_unary_operator(struct token_buffer *s,
         return 1;
     }
 
+    if (get_token_type(s, &tmp, STAR)) {
+        *out = STAR_UNARY;
+        return 1;
+    }
+
+    if (get_token_where(s, &tmp, is_math_minus)) {
+        *out = MINUS_UNARY;
+        return 1;
+    }
+
     return 0;
 }
 
-int parse_expression(struct token_buffer *s, struct expression *out) {
+int parse_binary_operator(struct token_buffer *s, enum binary_operator *out)
+{
+    struct token tmp = {0};
+    if (get_token_where(s, &tmp, is_math_plus)) {
+        *out = PLUS_BINARY;
+        return 1;
+    }
+
+    if (get_token_type(s, &tmp, PIPE)) {
+        if (get_token_type(s, &tmp, PIPE)) {
+            *out = OR_BINARY;
+        } else {
+            *out = BITWISE_OR_BINARY;
+        }
+        return 1;
+    }
+
+    if (get_token_type(s, &tmp, AND)) {
+        if (get_token_type(s, &tmp, AND)) {
+            *out = AND_BINARY;
+        } else {
+            *out = BITWISE_AND_BINARY;
+        }
+        return 1;
+    }
+
+    return 0;
+}
+
+int parse_function_expression(struct token_buffer *s, struct function_expression *out)
+{
+    struct token tmp = {0};
+    struct token name = {0};
+    if (!get_token_type(s, &name, IDENTIFIER))    return 0;
+    if (!get_token_where(s, &tmp, is_open_round)) return 0;
+
+    struct list_expression *params = malloc(sizeof(*params));
+    *params = create_list_expression(10);
+    int should_continue = 1;
+    int success = 0;
+
+    while (should_continue) {
+        struct expression expr = {0};
+        if (parse_expression(s, &expr)) {
+            append_list_expression(params, expr);
+            success = 1;
+        }
+        should_continue = get_token_type(s, &tmp, COMMA);
+    }
+
+    if (!get_token_where(s, &tmp, is_close_round)) return 0;
+    if (!success)                                  return 0;
+
+    *out = (struct function_expression) {
+        .function_name = name.identifier,
+        .params = params
+    };
+
+    return 1;
+}
+
+int parse_single_expression(struct token_buffer *s, struct expression *out) {
+    struct token tmp = {0};
     enum unary_operator unary_op;
+
     if (parse_unary_operator(s, &unary_op)) {
         struct expression *nested = malloc(sizeof(*nested));
-        if (!parse_expression(s, nested)) return 0;
+        if (!parse_single_expression(s, nested)) return 0;
+
         *out = (struct expression) {
             .kind = UNARY_EXPRESSION,
             .unary = (struct unary_expression) {
@@ -1020,12 +1088,65 @@ int parse_expression(struct token_buffer *s, struct expression *out) {
         return 1;
     }
 
+    if (get_token_where(s, &tmp, is_open_round)) {
+        struct expression *nested = malloc(sizeof(*nested));
+        if (!parse_expression(s, nested))              return 0;
+        if (!get_token_where(s, &tmp, is_close_round)) return 0;
+        *out = (struct expression) {
+            .kind = GROUP_EXPRESSION,
+            .grouped = nested
+        };
+        return 1;
+    }
+
+    struct function_expression function = {0};
+    if (parse_function_expression(s, &function)) {
+        *out = (struct expression) {
+            .kind = FUNCTION_EXPRESSION,
+            .function = function
+        };
+        return 1;
+    }
+
     struct literal_expression literal = {0};
     if (parse_literal_expression(s, &literal)) {
         *out = (struct expression) {
             .kind = LITERAL_EXPRESSION,
             .literal = literal
         };
+        return 1;
+    }
+
+    return 0;
+}
+
+int parse_expression(struct token_buffer *s, struct expression *out)
+{
+    enum binary_operator op;
+    int parsed_left = 0;
+    struct expression *l = malloc(sizeof(*l));
+    struct expression *r = malloc(sizeof(*r));
+
+    if (parse_single_expression(s, l)) {
+        parsed_left = 1;
+    } else {
+        return 0;
+    }
+
+    if (parse_binary_operator(s, &op) && parse_expression(s, r)) {
+        *out = (struct expression) {
+            .kind = BINARY_EXPRESSION,
+            .binary = (struct binary_expression) {
+                .binary_op = op,
+                .l = l,
+                .r = r
+            }
+        };
+        return 1;
+    }
+
+    if (parsed_left) {
+        *out = *l;
         return 1;
     }
 
