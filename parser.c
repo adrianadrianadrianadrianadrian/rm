@@ -1043,7 +1043,10 @@ int parse_function_expression(struct token_buffer *s, struct function_expression
     struct token tmp = {0};
     struct token name = {0};
     if (!get_token_type(s, &name, IDENTIFIER))    return 0;
-    if (!get_token_where(s, &tmp, is_open_round)) return 0;
+    if (!get_token_where(s, &tmp, is_open_round)) {
+        seek_back_token(s, 1);
+        return 0;
+    }
 
     struct list_expression *params = malloc(sizeof(*params));
     *params = create_list_expression(10);
