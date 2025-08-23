@@ -852,7 +852,9 @@ enum literal_expression_kind {
     LITERAL_BOOLEAN = 1,
     LITERAL_CHAR,
     LITERAL_STR,
-    LITERAL_NUMERIC
+    LITERAL_NUMERIC,
+    LITERAL_NAME,
+    LITERAL_HOLE
 };
 
 struct literal_expression {
@@ -862,6 +864,7 @@ struct literal_expression {
         char character;
         struct list_char *str;
         double numeric;
+        struct list_char *name;
     };
 };
 
@@ -932,7 +935,6 @@ int parse_boolean_literal_expression(struct token_buffer *s,
         return 1;
     }
 
-    seek_back_token(s, 1);
     return 0;
 }
 
@@ -978,13 +980,35 @@ int parse_str_literal_expression(struct token_buffer *s,
     return 1;
 }
 
+int parse_identifier_literal_expression(struct token_buffer *s,
+                                  struct literal_expression *out)
+{
+    struct token tmp = {0};
+    if (!get_token_type(s, &tmp, IDENTIFIER)) return 0;
+
+    if (strcmp(tmp.identifier->data, "_") == 0) {
+        *out = (struct literal_expression) {
+            .kind = LITERAL_HOLE,
+        };
+        return 1;
+    }
+
+    *out = (struct literal_expression) {
+        .kind = LITERAL_NAME,
+        .name = tmp.identifier
+    };
+
+    return 1;
+}
+
 int parse_literal_expression(struct token_buffer *s,
                              struct literal_expression *out)
 {
     return parse_char_literal_expression(s, out)
         || parse_str_literal_expression(s, out)
         || parse_numeric_literal_expression(s, out)
-        || parse_boolean_literal_expression(s, out);
+        || parse_boolean_literal_expression(s, out)
+        || parse_identifier_literal_expression(s, out);
 }
 
 int parse_unary_operator(struct token_buffer *s,
@@ -1042,7 +1066,7 @@ int parse_function_expression(struct token_buffer *s, struct function_expression
 {
     struct token tmp = {0};
     struct token name = {0};
-    if (!get_token_type(s, &name, IDENTIFIER))    return 0;
+    if (!get_token_type(s, &name, IDENTIFIER)) return 0;
     if (!get_token_where(s, &tmp, is_open_round)) {
         seek_back_token(s, 1);
         return 0;
@@ -1051,19 +1075,16 @@ int parse_function_expression(struct token_buffer *s, struct function_expression
     struct list_expression *params = malloc(sizeof(*params));
     *params = create_list_expression(10);
     int should_continue = 1;
-    int success = 0;
 
     while (should_continue) {
         struct expression expr = {0};
         if (parse_expression(s, &expr)) {
             append_list_expression(params, expr);
-            success = 1;
         }
         should_continue = get_token_type(s, &tmp, COMMA);
     }
 
     if (!get_token_where(s, &tmp, is_close_round)) return 0;
-    if (!success)                                  return 0;
 
     *out = (struct function_expression) {
         .function_name = name.identifier,

@@ -147,7 +147,13 @@ void display_expression(struct expression *expr)
                 case LITERAL_NUMERIC:
                     printf("%lf", expr->literal.numeric);
                     break;
-            }
+                case LITERAL_NAME:
+                    printf("%s", expr->literal.name->data);
+                    break;
+                case LITERAL_HOLE:
+                    printf("_");
+                    break;
+                }
             break;
         }
         case UNARY_EXPRESSION:
@@ -238,9 +244,13 @@ int main(void) {
     struct file_buffer b = create_file_buffer(f);
     struct token_buffer tok_buf = create_token_buffer(&b);
 
-    struct expression expr = {0};
-    if (parse_expression(&tok_buf, &expr)) {
-        display_expression(&expr);
+    // struct expression expr = {0};
+    // if (parse_expression(&tok_buf, &expr)) {
+    //     display_expression(&expr);
+    // }
+    struct binding_statement statement = {0};
+    if (parse_binding_statement(&tok_buf, &statement)) {
+        printf("haha");
     }
 
     return 0;
