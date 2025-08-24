@@ -132,7 +132,8 @@ enum keyword_type {
     WHILE,
     RETURN,
     BOOLEAN_TRUE,
-    BOOLEAN_FALSE
+    BOOLEAN_FALSE,
+    ELSE
 };
 
 enum paren_type {
@@ -206,6 +207,11 @@ int is_keyword(struct list_char *ident, enum keyword_type *out) {
 
     if (strcmp(ident->data, "false") == 0) {
         *out = BOOLEAN_FALSE;
+        return 1;
+    }
+
+    if (strcmp(ident->data, "else") == 0) {
+        *out = ELSE;
         return 1;
     }
 
@@ -630,6 +636,14 @@ int is_keyword_false(struct token *t) {
     return t->token_type == KEYWORD && t->keyword_type == BOOLEAN_FALSE;
 }
 
+int is_keyword_if(struct token *t) {
+    return t->token_type == KEYWORD && t->keyword_type == IF;
+}
+
+int is_keyword_else(struct token *t) {
+    return t->token_type == KEYWORD && t->keyword_type == ELSE;
+}
+
 // parsing
 enum primitive_type {
     UNIT = 1,
@@ -715,10 +729,10 @@ int parse_key_type_pairs(struct token_buffer *s, struct list_key_type_pair *out)
 
     while (should_continue) {
         struct key_type_pair pair = create_key_type_pair();
-        if (!get_and_expect_token(s, &tmp, IDENTIFIER))       return 0;
+        if (!get_token_type(s, &tmp, IDENTIFIER))        return 0;
         pair.field_name = *tmp.identifier;
-        if (!get_token_type(s, &tmp, COLON))                  return 0;
-        if (!parse_type(s, pair.field_type, 0, 1, 1, 0))      return 0;
+        if (!get_token_type(s, &tmp, COLON))             return 0;
+        if (!parse_type(s, pair.field_type, 0, 1, 1, 0)) return 0;
         append_list_key_type_pair(out, pair);
         should_continue = get_token_type(s, &tmp, COMMA);
     }
@@ -735,7 +749,7 @@ int parse_function_type(struct token_buffer *s, struct type *out, int named)
 
     if (named && !get_and_expect_token(s, &name, IDENTIFIER)) return 0;
     if (!get_and_expect_token_where(s, &tmp, is_open_round))  return 0;
-    if (!parse_key_type_pairs(s, &params))                    return 0;
+    parse_key_type_pairs(s, &params);
     if (!get_and_expect_token_where(s, &tmp, is_close_round)) return 0;
     if (!get_and_expect_token(s, &tmp, ARROW))                return 0;
     if (!parse_type(s, return_type, 0, 0, 0, 0))              return 0;
@@ -1094,13 +1108,13 @@ int parse_function_expression(struct token_buffer *s, struct function_expression
     return 1;
 }
 
-int parse_single_expression(struct token_buffer *s, struct expression *out) {
+int parse_expression_inner(struct token_buffer *s, struct expression *out) {
     struct token tmp = {0};
     enum unary_operator unary_op;
 
     if (parse_unary_operator(s, &unary_op)) {
         struct expression *nested = malloc(sizeof(*nested));
-        if (!parse_single_expression(s, nested)) return 0;
+        if (!parse_expression_inner(s, nested)) return 0;
 
         *out = (struct expression) {
             .kind = UNARY_EXPRESSION,
@@ -1144,14 +1158,13 @@ int parse_single_expression(struct token_buffer *s, struct expression *out) {
     return 0;
 }
 
-int parse_expression(struct token_buffer *s, struct expression *out)
-{
+int parse_expression(struct token_buffer *s, struct expression *out) {
     enum binary_operator op;
     int parsed_left = 0;
     struct expression *l = malloc(sizeof(*l));
     struct expression *r = malloc(sizeof(*r));
 
-    if (parse_single_expression(s, l)) {
+    if (parse_expression_inner(s, l)) {
         parsed_left = 1;
     } else {
         return 0;
@@ -1180,7 +1193,8 @@ int parse_expression(struct token_buffer *s, struct expression *out)
 enum statement_kind {
     BINDING_STATEMENT = 1,
     IF_STATEMENT,
-    RETURN_STATEMENT
+    RETURN_STATEMENT,
+    BLOCK_STATEMENT
 };
 
 struct binding_statement {
@@ -1189,13 +1203,28 @@ struct binding_statement {
     struct expression value;
 };
 
+struct if_statement {
+    struct expression condition;
+    struct statement *success_statement;
+    struct if_statement *else_statement;
+};
+
 typedef struct statement {
     enum statement_kind kind;
     union {
         struct expression return_expression;
         struct binding_statement binding_statement;
+        struct if_statement if_statement;
+        struct list_statement *statements;
     };
 } statement;
+
+LIST(statement);
+CREATE_LIST(statement);
+APPEND_LIST(statement);
+
+
+int parse_statement(struct token_buffer *s, struct statement *out);
 
 int parse_return_statement(struct token_buffer *s, struct statement *out)
 {
@@ -1209,10 +1238,11 @@ int parse_return_statement(struct token_buffer *s, struct statement *out)
         .kind = RETURN_STATEMENT,
         .return_expression = expression
     };
+
     return 1;
 }
 
-int parse_binding_statement(struct token_buffer *s, struct binding_statement *out)
+int parse_binding_statement(struct token_buffer *s, struct statement *out)
 {
     struct token tmp = {0};
     struct type type = {0};
@@ -1227,13 +1257,88 @@ int parse_binding_statement(struct token_buffer *s, struct binding_statement *ou
     if (!parse_expression(s, &expression))                return 0;
     if (!get_and_expect_token(s, &tmp, SEMICOLON))        return 0;
 
-    *out = (struct binding_statement) {
-        .variable_name = variable_name,
-        .variable_type = type,
-        .value = expression
+    *out = (struct statement) {
+        .kind = BLOCK_STATEMENT,
+        .binding_statement = (struct binding_statement) {
+            .variable_name = variable_name,
+            .variable_type = type,
+            .value = expression
+        }
     };
 
     return 1;
+}
+
+int parse_block_statement(struct token_buffer *s,
+                          struct statement *out,
+                          int with_semicolon)
+{
+    struct token tmp = {0};
+    if (!get_token_where(s, &tmp, is_open_curly)) return 0;
+
+    struct list_statement *statements = malloc(sizeof(*statements));
+    *statements = create_list_statement(10);
+
+    for (;;) {
+        struct statement statement = {0};
+        if (parse_statement(s, &statement)) {
+            append_list_statement(statements, statement);
+        } else {
+            return 0;
+        }
+
+        if (get_token_where(s, &tmp, is_close_curly)) {
+            break;
+        }
+    }
+
+    if (with_semicolon && !get_token_type(s, &tmp, SEMICOLON)) return 0;
+
+    *out = (struct statement) {
+        .kind = BLOCK_STATEMENT,
+        .statements = statements
+    };
+
+    return 1;
+}
+
+int parse_if_statement(struct token_buffer *s, struct statement *out) {
+    struct token tmp = {0};
+    struct expression condition = {0};
+    struct statement *success_statement = malloc(sizeof(*success_statement));
+    struct statement *else_statement = NULL;
+
+    if (!get_token_where(s, &tmp, is_keyword_if))        return 0;
+    if (!get_token_where(s, &tmp, is_open_round))        return 0;
+    if (!parse_expression(s, &condition))                return 0;
+    if (!get_token_where(s, &tmp, is_close_round))       return 0;
+    if (!parse_block_statement(s, success_statement, 0)) return 0;
+    if (get_token_where(s, &tmp, is_keyword_else)) {
+        else_statement = malloc(sizeof(*else_statement));
+        if (!parse_if_statement(s, else_statement) &&
+            !parse_block_statement(s, else_statement, 0))
+        {
+            return 0;
+        }
+    }
+
+    *out = (struct statement) {
+        .kind = IF_STATEMENT,
+        .if_statement = (struct if_statement) {
+            .condition = condition,
+            .success_statement = success_statement,
+            .else_statement = &else_statement->if_statement
+        }
+    };
+
+    return 1;
+}
+
+int parse_statement(struct token_buffer *s, struct statement *out) {
+    return parse_return_statement(s, out)
+        || parse_binding_statement(s, out)
+        || parse_if_statement(s, out)
+        || parse_block_statement(s, out, 1);
 }
 
 // C generation

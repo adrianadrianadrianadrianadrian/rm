@@ -102,6 +102,9 @@ void display_token(struct token token) {
                 case BOOLEAN_FALSE:
                     printf("false");
                     return;
+                case ELSE:
+                    printf("else");
+                    return;
             }
             return;
         }
@@ -248,9 +251,13 @@ int main(void) {
     // if (parse_expression(&tok_buf, &expr)) {
     //     display_expression(&expr);
     // }
-    struct binding_statement statement = {0};
-    if (parse_binding_statement(&tok_buf, &statement)) {
-        printf("haha");
+    // struct binding_statement statement = {0};
+    // if (parse_binding_statement(&tok_buf, &statement)) {
+    //     printf("worked");
+    // }
+    struct statement statement = {0};
+    if (parse_if_statement(&tok_buf, &statement)) {
+        printf("worked");
     }
 
     return 0;
