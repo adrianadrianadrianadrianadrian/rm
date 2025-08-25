@@ -93,6 +93,9 @@ void display_token(struct token token) {
                 case WHILE:
                     printf("while");
                     return;
+                case FOR:
+                    printf("for");
+                    return;
                 case RETURN:
                     printf("return");
                     return;
@@ -256,7 +259,7 @@ int main(void) {
     //     printf("worked");
     // }
     struct statement statement = {0};
-    if (parse_if_statement(&tok_buf, &statement)) {
+    if (parse_statement(&tok_buf, &statement)) {
         printf("worked");
     }
 
