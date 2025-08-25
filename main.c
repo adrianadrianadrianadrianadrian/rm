@@ -93,9 +93,6 @@ void display_token(struct token token) {
                 case WHILE:
                     printf("while");
                     return;
-                case FOR:
-                    printf("for");
-                    return;
                 case RETURN:
                     printf("return");
                     return;
@@ -250,16 +247,8 @@ int main(void) {
     struct file_buffer b = create_file_buffer(f);
     struct token_buffer tok_buf = create_token_buffer(&b);
 
-    // struct expression expr = {0};
-    // if (parse_expression(&tok_buf, &expr)) {
-    //     display_expression(&expr);
-    // }
-    // struct binding_statement statement = {0};
-    // if (parse_binding_statement(&tok_buf, &statement)) {
-    //     printf("worked");
-    // }
-    struct statement statement = {0};
-    if (parse_statement(&tok_buf, &statement)) {
+    struct rm_file file = {0};
+    if (parse_rm_file(&tok_buf, &file)) {
         printf("worked");
     }
 

@@ -130,7 +130,6 @@ enum keyword_type {
     STRUCT,
     IF,
     WHILE,
-    FOR,
     RETURN,
     BOOLEAN_TRUE,
     BOOLEAN_FALSE,
@@ -193,11 +192,6 @@ int is_keyword(struct list_char *ident, enum keyword_type *out) {
 
     if (strcmp(ident->data, "while") == 0) {
         *out = WHILE;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "for") == 0) {
-        *out = FOR;
         return 1;
     }
 
@@ -654,15 +648,12 @@ int is_keyword_while(struct token *t) {
     return t->token_type == KEYWORD && t->keyword_type == WHILE;
 }
 
-int is_keyword_for(struct token *t) {
-    return t->token_type == KEYWORD && t->keyword_type == FOR;
-}
-
 // parsing
 enum primitive_type {
     UNIT = 1,
     U8,
-    I8
+    I8,
+    BOOL
 };
 
 int is_primitive(struct list_char *raw, enum primitive_type *out)
@@ -682,12 +673,16 @@ int is_primitive(struct list_char *raw, enum primitive_type *out)
         return 1;
     }
 
+    if (strcmp(raw->data, "bool") == 0) {
+        *out = BOOL;
+        return 1;
+    }
+
     return 0;
 }
 
 enum type_kind {
-    TY_USER_DEFINED = 1,
-    TY_PRIMITIVE,
+    TY_PRIMITIVE = 1,
     TY_STRUCT,
     TY_FUNCTION,
     TY_ENUM
@@ -947,7 +942,7 @@ int parse_boolean_literal_expression(struct token_buffer *s,
                                      struct literal_expression *out)
 {
     struct token tmp = {0};
-    if (get_and_expect_token_where(s, &tmp, is_keyword_true)) {
+    if (get_token_where(s, &tmp, is_keyword_true)) {
         *out = (struct literal_expression) {
             .kind = LITERAL_BOOLEAN,
             .boolean = 1
@@ -955,7 +950,7 @@ int parse_boolean_literal_expression(struct token_buffer *s,
         return 1;
     }
 
-    if (get_and_expect_token_where(s, &tmp, is_keyword_false)) {
+    if (get_token_where(s, &tmp, is_keyword_false)) {
         *out = (struct literal_expression) {
             .kind = LITERAL_BOOLEAN,
             .boolean = 0
@@ -1211,7 +1206,12 @@ enum statement_kind {
     BLOCK_STATEMENT,
     ACTION_STATEMENT,
     WHILE_LOOP_STATEMENT,
-    FOR_LOOP_STATEMENT
+    TYPE_DECLARATION_STATEMENT
+};
+
+struct type_declaration_statement {
+    struct type type;
+    struct list_statement *statements;
 };
 
 struct binding_statement {
@@ -1231,13 +1231,6 @@ struct while_loop_statement {
     struct statement *do_statement;
 };
 
-struct for_loop_statement {
-    struct statement *init_statement;
-    struct expression condition;
-    struct statement *increment_statement;
-    struct statement *body;
-};
-
 typedef struct statement {
     enum statement_kind kind;
     union {
@@ -1246,7 +1239,7 @@ typedef struct statement {
         struct if_statement if_statement;
         struct list_statement *statements;
         struct while_loop_statement while_loop_statement;
-        struct for_loop_statement for_loop_statement;
+        struct type_declaration_statement type_declaration;
     };
 } statement;
 
@@ -1260,7 +1253,7 @@ int parse_return_statement(struct token_buffer *s, struct statement *out)
 {
     struct token tmp = {0};
     struct expression expression = {0};
-    if (!get_and_expect_token_where(s, &tmp, is_return_keyword)) return 0;
+    if (!get_token_where(s, &tmp, is_return_keyword))            return 0;
     if (!parse_expression(s, &expression))                       return 0;
     if (!get_and_expect_token(s, &tmp, SEMICOLON))               return 0;
 
@@ -1279,9 +1272,12 @@ int parse_binding_statement(struct token_buffer *s, struct statement *out)
     struct expression expression = {0};
     struct list_char variable_name = {0};
 
-    if (!get_and_expect_token(s, &tmp, IDENTIFIER))       return 0;
+    if (!get_token_type(s, &tmp, IDENTIFIER))             return 0;
     variable_name = *tmp.identifier;
-    if (!get_and_expect_token(s, &tmp, COLON))            return 0;
+    if (!get_token_type(s, &tmp, COLON)) {
+        seek_back_token(s, 1);
+        return 0;
+    }
     if (!parse_type(s, &type, 0, 0, 0, 0))                return 0;
     if (!get_and_expect_token_where(s, &tmp, is_math_eq)) return 0;
     if (!parse_expression(s, &expression))                return 0;
@@ -1336,15 +1332,14 @@ int parse_if_statement(struct token_buffer *s, struct statement *out) {
     struct token tmp = {0};
     struct expression condition = {0};
     struct statement *success_statement = malloc(sizeof(*success_statement));
-    struct statement *else_statement = NULL;
+    struct statement *else_statement = malloc(sizeof(*else_statement));
 
-    if (!get_token_where(s, &tmp, is_keyword_if))        return 0;
-    if (!get_token_where(s, &tmp, is_open_round))        return 0;
-    if (!parse_expression(s, &condition))                return 0;
-    if (!get_token_where(s, &tmp, is_close_round))       return 0;
-    if (!parse_block_statement(s, success_statement, 0)) return 0;
+    if (!get_token_where(s, &tmp, is_keyword_if))             return 0;
+    if (!get_and_expect_token_where(s, &tmp, is_open_round))  return 0;
+    if (!parse_expression(s, &condition))                     return 0;
+    if (!get_and_expect_token_where(s, &tmp, is_close_round)) return 0;
+    if (!parse_block_statement(s, success_statement, 0))      return 0;
     if (get_token_where(s, &tmp, is_keyword_else)) {
-        else_statement = malloc(sizeof(*else_statement));
         if (!parse_if_statement(s, else_statement) &&
             !parse_block_statement(s, else_statement, 0))
         {
@@ -1382,17 +1377,14 @@ int parse_action_statement(struct token_buffer *s, struct statement *out)
 int parse_while_loop_statement(struct token_buffer *s, struct statement *out)
 {
     struct token tmp = {0};
-    struct statement *do_statement = NULL;
+    struct statement *do_statement = malloc(sizeof(*do_statement));
     struct expression expression = {0};
 
     if (!get_token_where(s, &tmp, is_keyword_while))          return 0;
     if (!get_and_expect_token_where(s, &tmp, is_open_round))  return 0;
     if (!parse_expression(s, &expression))                    return 0;
     if (!get_and_expect_token_where(s, &tmp, is_close_round)) return 0;
-    if (!get_and_expect_token_where(s, &tmp, is_open_curly))  return 0;
-    do_statement = malloc(sizeof(*do_statement));
-    parse_statement(s, do_statement);
-    if (!get_and_expect_token_where(s, &tmp, is_close_curly)) return 0;
+    if (!parse_block_statement(s, do_statement, 0))           return 0;
 
     *out = (struct statement) {
         .kind = WHILE_LOOP_STATEMENT,
@@ -1405,32 +1397,28 @@ int parse_while_loop_statement(struct token_buffer *s, struct statement *out)
     return 1;
 }
 
-int parse_for_loop_statement(struct token_buffer *s, struct statement *out)
-{
-    struct token tmp = {0};
-    struct expression condition = {0};
-    struct statement *init_statement = malloc(sizeof(*init_statement));
-    struct statement *incremenet_statement = malloc(sizeof(*incremenet_statement));
-    struct statement *body = malloc(sizeof(*body));
+int parse_type_declaration(struct token_buffer *s, struct statement *out) {
+    struct type type = {0};
+    if (!parse_type(s, &type, 1, 1, 1, 1)) return 0;
+    if (type.kind != TY_FUNCTION) {
+        *out = (struct statement) {
+            .kind = TYPE_DECLARATION_STATEMENT,
+            .type_declaration = (struct type_declaration_statement) {
+                .type = type
+            }
+        };
+        return 1;
+    }
 
-    if (!get_token_where(s, &tmp, is_keyword_for))            return 0;
-    if (!get_and_expect_token_where(s, &tmp, is_open_round))  return 0;
-    if (!parse_statement(s, init_statement))                  return 0;
-    if (!parse_expression(s, &condition))                     return 0;
-    if (!get_token_type(s, &tmp, SEMICOLON))                  return 0;
-    if (!parse_statement(s, incremenet_statement))            return 0;
-    if (!get_and_expect_token_where(s, &tmp, is_close_round)) return 0;
-    if (!get_and_expect_token_where(s, &tmp, is_open_curly))  return 0;
-    if (!parse_statement(s, body))                            return 0;
-    if (!get_and_expect_token_where(s, &tmp, is_close_curly)) return 0;
+
+    struct statement body = {0};
+    if (!parse_block_statement(s, &body, 0)) return 0;
 
     *out = (struct statement) {
-        .kind = FOR_LOOP_STATEMENT,
-        .for_loop_statement = (struct for_loop_statement) {
-            .init_statement = init_statement,
-            .condition = condition,
-            .increment_statement = incremenet_statement,
-            .body = body
+        .kind = TYPE_DECLARATION_STATEMENT,
+        .type_declaration = (struct type_declaration_statement) {
+            .type = type,
+            .statements = body.statements
         }
     };
 
@@ -1444,7 +1432,30 @@ int parse_statement(struct token_buffer *s, struct statement *out) {
         || parse_block_statement(s, out, 1)
         || parse_action_statement(s, out)
         || parse_while_loop_statement(s, out)
-        || parse_for_loop_statement(s, out);
+        || parse_type_declaration(s, out);
+}
+
+struct rm_file {
+    struct list_statement statements;
+};
+
+int parse_rm_file(struct token_buffer *s, struct rm_file *out) {
+    struct list_statement statements = create_list_statement(10);
+
+    for (;;) {
+        struct statement statement = {0};
+        if (parse_statement(s, &statement)) {
+            append_list_statement(&statements, statement);
+        } else {
+            return 1;
+        }
+    }
+
+    *out = (struct rm_file) {
+        .statements = statements
+    };
+
+    return 1;
 }
 
 // C generation
