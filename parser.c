@@ -8,6 +8,10 @@
     fprintf(stderr, "%s:%d: todo: `%s`\n", __FILE__, __LINE__, msg); \
     exit(1);
 
+#define UNREACHABLE(msg) \
+    fprintf(stderr, "%s:%d: unreachable: `%s`\n", __FILE__, __LINE__, msg); \
+    exit(1);
+
 typedef struct positional_char {
     char value;
     int row;
@@ -1234,7 +1238,7 @@ struct while_loop_statement {
 typedef struct statement {
     enum statement_kind kind;
     union {
-        struct expression return_expression;
+        struct expression expression;
         struct binding_statement binding_statement;
         struct if_statement if_statement;
         struct list_statement *statements;
@@ -1259,7 +1263,7 @@ int parse_return_statement(struct token_buffer *s, struct statement *out)
 
     *out = (struct statement) {
         .kind = RETURN_STATEMENT,
-        .return_expression = expression
+        .expression = expression
     };
 
     return 1;
@@ -1284,7 +1288,7 @@ int parse_binding_statement(struct token_buffer *s, struct statement *out)
     if (!get_and_expect_token(s, &tmp, SEMICOLON))        return 0;
 
     *out = (struct statement) {
-        .kind = BLOCK_STATEMENT,
+        .kind = BINDING_STATEMENT,
         .binding_statement = (struct binding_statement) {
             .variable_name = variable_name,
             .variable_type = type,
@@ -1363,12 +1367,12 @@ int parse_action_statement(struct token_buffer *s, struct statement *out)
 {
     struct token tmp = {0};
     struct expression expression = {0};
-    if (!parse_expression(s, &expression))                       return 0;
-    if (!get_and_expect_token(s, &tmp, SEMICOLON))               return 0;
+    if (!parse_expression(s, &expression))         return 0;
+    if (!get_and_expect_token(s, &tmp, SEMICOLON)) return 0;
 
     *out = (struct statement) {
         .kind = ACTION_STATEMENT,
-        .return_expression = expression
+        .expression = expression
     };
 
     return 1;
@@ -1447,7 +1451,7 @@ int parse_rm_file(struct token_buffer *s, struct rm_file *out) {
         if (parse_statement(s, &statement)) {
             append_list_statement(&statements, statement);
         } else {
-            return 1;
+            break;
         }
     }
 
@@ -1459,71 +1463,303 @@ int parse_rm_file(struct token_buffer *s, struct rm_file *out) {
 }
 
 // C generation
-//void write_type(struct type *ty);
+void write_type(struct type *ty);
 
-// char *primitive_c_type(enum primitive_type ty) {
-//     switch (ty) {
-//         case UNIT:
-//             return "void";
-//         case U8:
-//             return "char";
-//         case I8:
-//             return "int";
-//     }
-// }
-//
-// void write_function_type(struct type *ty) {
-//     assert(ty->kind == TY_FUNCTION);
-//     write_type(ty->function_type.return_type);
-//     printf(" %s(", ty->name->data);
-//     for (size_t i = 0; i < ty->function_type.params->size; i++) {
-//         struct type type = ty->function_type.params->data[i];
-//         write_type(&type);
-//         if (i < ty->function_type.params->size - 1) {
-//             printf(", ");
-//         }
-//     }
-//     printf(")");
-// }
-//
-// void write_struct(struct type *ty) {
-//     assert(ty->kind == TY_STRUCT);
-//     printf("struct {");
-//     //write_type(ty->struct_type.field_type);
-//     printf("}");
-// }
-//
-// void write_primitive(struct type *ty) {
-//     assert(ty->kind == TY_PRIMITIVE);
-//     printf("%s", primitive_c_type(ty->primitive_type));
-//     if (!ty->anonymous) {
-//         printf(" %s", ty->name->data);
-//     }
-// }
-//
-// void write_user_defined(struct type *ty) {
-//     assert(ty->kind == TY_USER_DEFINED);
-//     printf("%s", ty->user_defined.data);
-//     if (!ty->anonymous) {
-//         printf(" %s", ty->name->data);
-//     }
-// }
-//
-// void write_type(struct type *ty) {
-//     switch (ty->kind) {
-//         case TY_PRIMITIVE:
-//             write_primitive(ty);
-//             break;
-//         case TY_STRUCT:
-//             write_struct(ty);
-//             break;
-//         case TY_FUNCTION:
-//             write_function_type(ty);
-//             break;
-//         case TY_ENUM:
-//             break;
-//         case TY_USER_DEFINED:
-//             write_user_defined(ty);
-//             break;
-//     }
-// }
+void write_primitive_type(struct type *ty) {
+    assert(ty->kind == TY_PRIMITIVE);
+    switch (ty->primitive_type) {
+        case UNIT:
+            printf("void");
+            return;
+        case U8:
+            printf("char");
+            return;
+        case I8:
+            printf("int");
+            return;
+        case BOOL:
+            printf("char");
+            return;
+        default:
+            UNREACHABLE("primitive type not handled");
+    }
+}
+
+void write_struct_type(struct type *ty) {
+    assert(ty->kind == TY_STRUCT);
+    printf("struct");
+    if (!ty->anonymous) {
+        printf(" %s ", ty->name->data);
+    }
+
+    printf("{");
+    size_t pair_count = ty->key_type_pairs.size;
+    for (size_t i = 0; i < pair_count; i++) {
+        struct key_type_pair pair = ty->key_type_pairs.data[i];
+        write_type(pair.field_type);
+        printf(" %s;", pair.field_name.data);
+    }
+    printf("}");
+}
+
+void write_enum_type(struct type *ty) {
+    assert(ty->kind == TY_ENUM);
+
+    size_t variant_count = ty->key_type_pairs.size;
+    printf("enum %s_kind {", ty->name->data);
+    for (size_t i = 0; i < variant_count; i++) {
+        printf("%s_kind_%s", ty->name->data, ty->key_type_pairs.data[i].field_name.data);
+        if (i < variant_count - 1) {
+            printf(",");
+        }
+    }
+    printf("}; ");
+
+    printf("struct %s_type { enum %s_kind %s_kind; union {",
+           ty->name->data, ty->name->data, ty->name->data);
+
+    for (size_t i = 0; i < variant_count; i++) {
+        struct key_type_pair pair = ty->key_type_pairs.data[i];
+        write_type(pair.field_type);
+        printf(" %s_type_%s;", ty->name->data, pair.field_name.data);
+    }
+    printf("};};");
+}
+
+void write_function_type(struct type *ty) {
+    assert(ty->kind == TY_FUNCTION);
+    write_type(ty->function_type.return_type);
+    if (!ty->anonymous) {
+        printf(" %s", ty->name->data);
+    }
+
+    printf("(");
+    size_t param_count = ty->function_type.params.size;
+    for (size_t i = 0; i < param_count; i++) {
+        struct key_type_pair pair = ty->function_type.params.data[i];
+        write_type(pair.field_type);
+        printf(" %s", pair.field_name.data);
+        if (i < param_count - 1) {
+            printf(", ");
+        }
+    }
+    printf(")");
+}
+
+void write_type(struct type *ty) {
+    switch (ty->kind) {
+        case TY_PRIMITIVE:
+            return write_primitive_type(ty);
+        case TY_STRUCT:
+            return write_struct_type(ty);
+        case TY_FUNCTION:
+            return write_function_type(ty);
+        case TY_ENUM:
+            return write_enum_type(ty);
+        default:
+            UNREACHABLE("type kind not handled");
+    }
+}
+
+void write_expression(struct expression *e);
+
+void write_literal_expression(struct literal_expression *e) {
+    switch (e->kind) {
+        case LITERAL_BOOLEAN:
+        {
+            printf("%d", e->boolean);
+            break;
+        }
+        case LITERAL_CHAR:
+        {
+            printf("'%c'", e->character);
+            break;
+        }
+        case LITERAL_STR:
+        {
+            printf("\"%s\"", e->str->data);
+            break;
+        }
+        case LITERAL_NUMERIC:
+        {
+            printf("%lf", e->numeric);
+            break;
+        }
+        case LITERAL_NAME:
+        {
+            printf("%s", e->name->data);
+            break;
+        }
+        case LITERAL_HOLE:
+            TODO("write hole");
+            break;
+    }
+}
+
+void write_unary_expression(struct unary_expression *e) {
+    switch (e->operator) {
+        case BANG_UNARY:
+            printf("!");
+            break;
+        case STAR_UNARY:
+            printf("*");
+            break;
+        case MINUS_UNARY:
+            printf("-");
+            break;
+        default:
+            UNREACHABLE("unary operator not handled");
+    }
+
+    write_expression(e->expression);
+}
+
+void write_binary_expression(struct binary_expression *e) {
+    write_expression(e->l);
+    switch (e->binary_op) {
+        case PLUS_BINARY:
+            printf(" + ");
+            break;
+        case OR_BINARY:
+            printf(" || ");
+            break;
+        case AND_BINARY:
+            printf(" && ");
+            break;
+        case BITWISE_OR_BINARY:
+            printf(" | ");
+            break;
+        case BITWISE_AND_BINARY:
+            printf(" & ");
+            break;
+        default:
+            UNREACHABLE("binary operator not handled");
+    }
+    write_expression(e->r);
+}
+
+void write_grouped_expression(struct expression *e) {
+    printf("(");
+    write_expression(e);
+    printf(")");
+}
+
+void write_function_expression(struct function_expression *e) {
+    printf("%s(", e->function_name->data);
+    size_t param_count = e->params->size;
+    for (size_t i = 0; i < param_count; i++) {
+        write_expression(&e->params->data[i]);
+        if (i < param_count - 1) {
+            printf(", ");
+        }
+    }
+    printf(")");
+}
+
+void write_expression(struct expression *e) {
+    switch (e->kind) {
+        case LITERAL_EXPRESSION:
+            write_literal_expression(&e->literal);
+            return;
+        case UNARY_EXPRESSION:
+            write_unary_expression(&e->unary);
+            return;
+        case BINARY_EXPRESSION:
+            write_binary_expression(&e->binary);
+            return;
+        case GROUP_EXPRESSION:
+            write_grouped_expression(e->grouped);
+            return;
+        case FUNCTION_EXPRESSION:
+            write_function_expression(&e->function);
+            return;
+        default:
+            UNREACHABLE("expression kind not handled");
+    }
+}
+
+void write_statement(struct statement *s);
+
+void write_binding_statement(struct binding_statement *s) {
+    write_type(&s->variable_type);
+    printf(" %s = ", s->variable_name.data);
+    write_expression(&s->value);
+    printf(";");
+}
+
+void write_if_statement(struct if_statement *s) {
+    printf("if (");
+    write_expression(&s->condition);
+    printf(")");
+    write_statement(s->success_statement);
+    if (s->else_statement != NULL) {
+        printf(" else ");
+        write_statement(s->else_statement);
+    }
+}
+
+void write_return_statement(struct expression *e) {
+    printf("return ");
+    write_expression(e);
+    printf(";");
+}
+
+void write_block_statement(struct list_statement *statements) {
+    printf("{");
+    for (size_t i = 0; i < statements->size; i++) {
+        write_statement(&statements->data[i]);
+    }
+    printf("}");
+}
+
+void write_action_statement(struct expression *e) {
+    write_expression(e);
+    printf(";");
+}
+
+void write_while_statement(struct while_loop_statement *s) {
+    printf("while (");
+    write_expression(&s->condition);
+    printf(")");
+    write_statement(s->do_statement);
+}
+
+void write_type_declaration_statement(struct type_declaration_statement *s) {
+    write_type(&s->type);
+    if (s->statements != NULL)
+    {
+        printf("{");
+        for (size_t i = 0; i < s->statements->size; i++) {
+            write_statement(&s->statements->data[i]);
+        }
+        printf("}");
+    }
+}
+
+void write_statement(struct statement *s) {
+    switch (s->kind) {
+        case BINDING_STATEMENT:
+            write_binding_statement(&s->binding_statement);
+            break;
+        case IF_STATEMENT:
+            write_if_statement(&s->if_statement);
+            break;
+        case RETURN_STATEMENT:
+            write_return_statement(&s->expression);
+            break;
+        case BLOCK_STATEMENT:
+            write_block_statement(s->statements);
+            break;
+        case ACTION_STATEMENT:
+            write_action_statement(&s->expression);
+            break;
+        case WHILE_LOOP_STATEMENT:
+            write_while_statement(&s->while_loop_statement);
+            break;
+        case TYPE_DECLARATION_STATEMENT:
+            write_type_declaration_statement(&s->type_declaration);
+            break;
+        default:
+            UNREACHABLE("statement type not handled");
+    }
+}

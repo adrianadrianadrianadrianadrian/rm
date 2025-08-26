@@ -248,8 +248,12 @@ int main(void) {
     struct token_buffer tok_buf = create_token_buffer(&b);
 
     struct rm_file file = {0};
-    if (parse_rm_file(&tok_buf, &file)) {
-        printf("worked");
+    if (!parse_rm_file(&tok_buf, &file)) {
+        printf("failed");
+    }
+
+    for (size_t i = 0; i < file.statements.size; i++) {
+        write_statement(&file.statements.data[i]);
     }
 
     return 0;
