@@ -16,3 +16,18 @@ fn nested(cb: fn(a: i8, b: u8) -> void, d: struct { f: i8 }) -> void;
 ```
 
 oh, and I'm letting it leak memory everywhere for now.
+
+So far this compiles and runs via compile.sh:
+```
+fn factorial(n: u8) -> u8 {
+    if (n == 0) {
+        return 1;
+    }
+
+    return n * factorial(n - 1);
+}
+
+fn main() -> u8 {
+    return factorial(10);
+}
+```

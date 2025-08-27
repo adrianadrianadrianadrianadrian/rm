@@ -384,6 +384,13 @@ int next_token(struct file_buffer *b, struct token *out) {
                 };
                 return 1;
             }
+            case '>': {
+                *out = (struct token) {
+                    .token_type = ARROW,
+                    .position = b->current_position
+                };
+                return 1;
+            }
             case '*': {
                 *out = (struct token) {
                     .token_type = STAR,
@@ -655,9 +662,18 @@ int is_keyword_while(struct token *t) {
 // parsing
 enum primitive_type {
     UNIT = 1,
+    BOOL,
     U8,
     I8,
-    BOOL
+    I16,
+    U16,
+    I32,
+    U32,
+    I64,
+    U64,
+    USIZE,
+    F32,
+    F64,
 };
 
 int is_primitive(struct list_char *raw, enum primitive_type *out)
@@ -667,8 +683,8 @@ int is_primitive(struct list_char *raw, enum primitive_type *out)
         return 1;
     }
 
-    if (strcmp(raw->data, "u8") == 0) {
-        *out = U8;
+    if (strcmp(raw->data, "bool") == 0) {
+        *out = BOOL;
         return 1;
     }
 
@@ -677,8 +693,48 @@ int is_primitive(struct list_char *raw, enum primitive_type *out)
         return 1;
     }
 
-    if (strcmp(raw->data, "bool") == 0) {
-        *out = BOOL;
+    if (strcmp(raw->data, "u8") == 0) {
+        *out = U8;
+        return 1;
+    }
+
+    if (strcmp(raw->data, "i16") == 0) {
+        *out = I16;
+        return 1;
+    }
+
+    if (strcmp(raw->data, "u16") == 0) {
+        *out = U16;
+        return 1;
+    }
+
+    if (strcmp(raw->data, "i32") == 0) {
+        *out = U32;
+        return 1;
+    }
+
+    if (strcmp(raw->data, "i64") == 0) {
+        *out = I64;
+        return 1;
+    }
+
+    if (strcmp(raw->data, "u64") == 0) {
+        *out = U64;
+        return 1;
+    }
+
+    if (strcmp(raw->data, "usize") == 0) {
+        *out = USIZE;
+        return 1;
+    }
+
+    if (strcmp(raw->data, "f32") == 0) {
+        *out = F32;
+        return 1;
+    }
+
+    if (strcmp(raw->data, "f64") == 0) {
+        *out = F64;
         return 1;
     }
 
@@ -710,6 +766,7 @@ typedef struct type {
     enum type_kind kind;
     int anonymous;
     struct list_char *name;
+    int pointer_count;
     union {
         struct function_type function_type;
         enum primitive_type primitive_type;
@@ -774,7 +831,8 @@ int parse_function_type(struct token_buffer *s, struct type *out, int named)
             .return_type = return_type
         },
         .anonymous = !named,
-        .name = name.identifier
+        .name = name.identifier,
+        .pointer_count = out->pointer_count
     };
 
     return 1;
@@ -795,7 +853,8 @@ int parse_struct_type(struct token_buffer *s, struct type *out, int named)
         .kind = TY_STRUCT,
         .key_type_pairs = pairs,
         .name = name.identifier,
-        .anonymous = !named
+        .anonymous = !named,
+        .pointer_count = out->pointer_count
     };
 
     return 1;
@@ -816,7 +875,8 @@ int parse_enum_type(struct token_buffer *s, struct type *out, int named)
         .kind = TY_ENUM,
         .key_type_pairs = pairs,
         .name = name.identifier,
-        .anonymous = !named
+        .anonymous = !named,
+        .pointer_count = out->pointer_count
     };
 
     return 1;
@@ -837,7 +897,8 @@ int parse_primitive_type(struct token_buffer *s, struct type *out, int named)
         .kind = TY_PRIMITIVE,
         .primitive_type = primitive_type,
         .anonymous = !named,
-        .name = name.identifier
+        .name = name.identifier,
+        .pointer_count = out->pointer_count
     };
 
     return 1;
@@ -851,6 +912,10 @@ int parse_type(struct token_buffer *s,
                int named_primitive)
 {
     struct token tmp = {0};
+    while (get_token_type(s, &tmp, STAR)) {
+        out->pointer_count += 1;
+    }
+
     if (get_token_type(s, &tmp, KEYWORD)) {
         switch (tmp.keyword_type) {
             case FN:
@@ -897,10 +962,14 @@ struct literal_expression {
 
 enum binary_operator {
     PLUS_BINARY = 1,
+    MINUS_BINARY,
     OR_BINARY,
     AND_BINARY,
     BITWISE_OR_BINARY,
-    BITWISE_AND_BINARY
+    BITWISE_AND_BINARY,
+    GREATER_THAN_BINARY,
+    EQUAL_TO_BINARY,
+    MULTIPLY_BINARY,
 };
 
 struct binary_expression {
@@ -1068,6 +1137,16 @@ int parse_binary_operator(struct token_buffer *s, enum binary_operator *out)
         return 1;
     }
 
+    if (get_token_where(s, &tmp, is_math_minus)) {
+        *out = MINUS_BINARY;
+        return 1;
+    }
+
+    if (get_token_type(s, &tmp, STAR)) {
+        *out = MULTIPLY_BINARY;
+        return 1;
+    }
+
     if (get_token_type(s, &tmp, PIPE)) {
         if (get_token_type(s, &tmp, PIPE)) {
             *out = OR_BINARY;
@@ -1084,6 +1163,21 @@ int parse_binary_operator(struct token_buffer *s, enum binary_operator *out)
             *out = BITWISE_AND_BINARY;
         }
         return 1;
+    }
+
+    if (get_token_type(s, &tmp, ARROW)) {
+        *out = GREATER_THAN_BINARY;
+        return 1;
+    }
+
+    if (get_token_where(s, &tmp, is_math_eq)) {
+        if (get_token_where(s, &tmp, is_math_eq)) {
+            *out = EQUAL_TO_BINARY;
+            return 1;
+        } else {
+            seek_back_token(s, 1);
+            return 0;
+        }
     }
 
     return 0;
@@ -1336,7 +1430,7 @@ int parse_if_statement(struct token_buffer *s, struct statement *out) {
     struct token tmp = {0};
     struct expression condition = {0};
     struct statement *success_statement = malloc(sizeof(*success_statement));
-    struct statement *else_statement = malloc(sizeof(*else_statement));
+    struct statement *else_statement = NULL;
 
     if (!get_token_where(s, &tmp, is_keyword_if))             return 0;
     if (!get_and_expect_token_where(s, &tmp, is_open_round))  return 0;
@@ -1344,6 +1438,7 @@ int parse_if_statement(struct token_buffer *s, struct statement *out) {
     if (!get_and_expect_token_where(s, &tmp, is_close_round)) return 0;
     if (!parse_block_statement(s, success_statement, 0))      return 0;
     if (get_token_where(s, &tmp, is_keyword_else)) {
+        else_statement = malloc(sizeof(*else_statement));
         if (!parse_if_statement(s, else_statement) &&
             !parse_block_statement(s, else_statement, 0))
         {
@@ -1403,7 +1498,7 @@ int parse_while_loop_statement(struct token_buffer *s, struct statement *out)
 
 int parse_type_declaration(struct token_buffer *s, struct statement *out) {
     struct type type = {0};
-    if (!parse_type(s, &type, 1, 1, 1, 1)) return 0;
+    if (!parse_type(s, &type, 1, 1, 1, 1))   return 0;
     if (type.kind != TY_FUNCTION) {
         *out = (struct statement) {
             .kind = TYPE_DECLARATION_STATEMENT,
@@ -1463,131 +1558,166 @@ int parse_rm_file(struct token_buffer *s, struct rm_file *out) {
 }
 
 // C generation
-void write_type(struct type *ty);
+void write_type(struct type *ty, FILE *file);
 
-void write_primitive_type(struct type *ty) {
+void write_primitive_type(struct type *ty, FILE *file) {
     assert(ty->kind == TY_PRIMITIVE);
     switch (ty->primitive_type) {
         case UNIT:
-            printf("void");
-            return;
-        case U8:
-            printf("char");
+            fprintf(file, "void");
             return;
         case I8:
-            printf("int");
+            fprintf(file, "int");
+            return;
+        case U8:
+            fprintf(file, "int");
+            return;
+        case I16:
+            fprintf(file, "int");
+            return;
+        case U16:
+            fprintf(file, "int");
+            return;
+        case I32:
+            fprintf(file, "int");
+            return;
+        case U32:
+            fprintf(file, "int");
+            return;
+        case I64:
+            fprintf(file, "int");
+            return;
+        case U64:
+            fprintf(file, "int");
+            return;
+        case USIZE:
+            fprintf(file, "size_t");
+            return;
+        case F32:
+            fprintf(file, "float");
+            return;
+        case F64:
+            fprintf(file, "double");
             return;
         case BOOL:
-            printf("char");
+            fprintf(file, "char");
             return;
         default:
             UNREACHABLE("primitive type not handled");
     }
 }
 
-void write_struct_type(struct type *ty) {
+void write_struct_type(struct type *ty, FILE *file) {
     assert(ty->kind == TY_STRUCT);
-    printf("struct");
+    fprintf(file, "struct");
     if (!ty->anonymous) {
-        printf(" %s ", ty->name->data);
+        fprintf(file, " %s ", ty->name->data);
     }
 
-    printf("{");
+    fprintf(file, "{");
     size_t pair_count = ty->key_type_pairs.size;
     for (size_t i = 0; i < pair_count; i++) {
         struct key_type_pair pair = ty->key_type_pairs.data[i];
-        write_type(pair.field_type);
-        printf(" %s;", pair.field_name.data);
+        write_type(pair.field_type, file);
+        fprintf(file, " %s;", pair.field_name.data);
     }
-    printf("}");
+    fprintf(file, "}");
 }
 
-void write_enum_type(struct type *ty) {
+void write_enum_type(struct type *ty, FILE *file) {
     assert(ty->kind == TY_ENUM);
 
     size_t variant_count = ty->key_type_pairs.size;
-    printf("enum %s_kind {", ty->name->data);
+    fprintf(file, "enum %s_kind {", ty->name->data);
     for (size_t i = 0; i < variant_count; i++) {
-        printf("%s_kind_%s", ty->name->data, ty->key_type_pairs.data[i].field_name.data);
+        fprintf(file, "%s_kind_%s", ty->name->data, ty->key_type_pairs.data[i].field_name.data);
         if (i < variant_count - 1) {
             printf(",");
         }
     }
-    printf("}; ");
 
-    printf("struct %s_type { enum %s_kind %s_kind; union {",
-           ty->name->data, ty->name->data, ty->name->data);
+    fprintf(file, "}; ");
+    fprintf(file, "struct %s_type { enum %s_kind %s_kind; union {",
+            ty->name->data, ty->name->data, ty->name->data);
 
     for (size_t i = 0; i < variant_count; i++) {
         struct key_type_pair pair = ty->key_type_pairs.data[i];
-        write_type(pair.field_type);
-        printf(" %s_type_%s;", ty->name->data, pair.field_name.data);
+        write_type(pair.field_type, file);
+        fprintf(file, " %s_type_%s;", ty->name->data, pair.field_name.data);
     }
-    printf("};};");
+    fprintf(file, "};};");
 }
 
-void write_function_type(struct type *ty) {
+void write_function_type(struct type *ty, FILE *file) {
     assert(ty->kind == TY_FUNCTION);
-    write_type(ty->function_type.return_type);
+    write_type(ty->function_type.return_type, file);
     if (!ty->anonymous) {
-        printf(" %s", ty->name->data);
+        fprintf(file, " %s", ty->name->data);
     }
 
-    printf("(");
+    fprintf(file, "(");
     size_t param_count = ty->function_type.params.size;
     for (size_t i = 0; i < param_count; i++) {
         struct key_type_pair pair = ty->function_type.params.data[i];
-        write_type(pair.field_type);
-        printf(" %s", pair.field_name.data);
+        write_type(pair.field_type, file);
+        fprintf(file, " %s", pair.field_name.data);
         if (i < param_count - 1) {
-            printf(", ");
+            fprintf(file, ", ");
         }
     }
-    printf(")");
+    fprintf(file, ")");
 }
 
-void write_type(struct type *ty) {
+void write_type(struct type *ty, FILE *file) {
     switch (ty->kind) {
         case TY_PRIMITIVE:
-            return write_primitive_type(ty);
+            write_primitive_type(ty, file);
+            break;
         case TY_STRUCT:
-            return write_struct_type(ty);
+            write_struct_type(ty, file);
+            break;
         case TY_FUNCTION:
-            return write_function_type(ty);
+            write_function_type(ty, file);
+            break;
         case TY_ENUM:
-            return write_enum_type(ty);
+            write_enum_type(ty, file);
+            break;
         default:
             UNREACHABLE("type kind not handled");
     }
+
+    for (int i = 0; i < ty->pointer_count; i++) {
+        fprintf(file, "*");
+    }
 }
 
-void write_expression(struct expression *e);
+void write_expression(struct expression *e, FILE *file);
 
-void write_literal_expression(struct literal_expression *e) {
+void write_literal_expression(struct literal_expression *e, FILE *file) {
     switch (e->kind) {
         case LITERAL_BOOLEAN:
         {
-            printf("%d", e->boolean);
+            fprintf(file, "%d", e->boolean);
             break;
         }
         case LITERAL_CHAR:
         {
-            printf("'%c'", e->character);
+            fprintf(file, "'%c'", e->character);
             break;
         }
         case LITERAL_STR:
         {
-            printf("\"%s\"", e->str->data);
+            fprintf(file, "\"%s\"", e->str->data);
             break;
         }
         case LITERAL_NUMERIC:
         {
-            printf("%lf", e->numeric);
+            fprintf(file, "%d", (int)e->numeric); // TODO
             break;
         }
         case LITERAL_NAME:
         {
-            printf("%s", e->name->data);
+            fprintf(file, "%s", e->name->data);
             break;
         }
         case LITERAL_HOLE:
@@ -1596,168 +1726,180 @@ void write_literal_expression(struct literal_expression *e) {
     }
 }
 
-void write_unary_expression(struct unary_expression *e) {
+void write_unary_expression(struct unary_expression *e, FILE *file) {
     switch (e->operator) {
         case BANG_UNARY:
-            printf("!");
+            fprintf(file, "!");
             break;
         case STAR_UNARY:
-            printf("*");
+            fprintf(file, "*");
             break;
         case MINUS_UNARY:
-            printf("-");
+            fprintf(file, "-");
             break;
         default:
             UNREACHABLE("unary operator not handled");
     }
 
-    write_expression(e->expression);
+    write_expression(e->expression, file);
 }
 
-void write_binary_expression(struct binary_expression *e) {
-    write_expression(e->l);
+void write_binary_expression(struct binary_expression *e, FILE *file) {
+    write_expression(e->l, file);
     switch (e->binary_op) {
         case PLUS_BINARY:
-            printf(" + ");
+            fprintf(file, " + ");
+            break;
+        case MINUS_BINARY:
+            fprintf(file, " - ");
             break;
         case OR_BINARY:
-            printf(" || ");
+            fprintf(file, " || ");
             break;
         case AND_BINARY:
-            printf(" && ");
+            fprintf(file, " && ");
             break;
         case BITWISE_OR_BINARY:
-            printf(" | ");
+            fprintf(file, " | ");
             break;
         case BITWISE_AND_BINARY:
-            printf(" & ");
+            fprintf(file, " & ");
+            break;
+        case GREATER_THAN_BINARY:
+            fprintf(file, " > ");
+            break;
+        case EQUAL_TO_BINARY:
+            fprintf(file, " == ");
+            break;
+        case MULTIPLY_BINARY:
+            fprintf(file, " * ");
             break;
         default:
             UNREACHABLE("binary operator not handled");
     }
-    write_expression(e->r);
+    write_expression(e->r, file);
 }
 
-void write_grouped_expression(struct expression *e) {
-    printf("(");
-    write_expression(e);
-    printf(")");
+void write_grouped_expression(struct expression *e, FILE *file) {
+    fprintf(file, "(");
+    write_expression(e, file);
+    fprintf(file, ")");
 }
 
-void write_function_expression(struct function_expression *e) {
-    printf("%s(", e->function_name->data);
+void write_function_expression(struct function_expression *e, FILE *file) {
+    fprintf(file, "%s(", e->function_name->data);
     size_t param_count = e->params->size;
     for (size_t i = 0; i < param_count; i++) {
-        write_expression(&e->params->data[i]);
+        write_expression(&e->params->data[i], file);
         if (i < param_count - 1) {
-            printf(", ");
+            fprintf(file, ", ");
         }
     }
-    printf(")");
+    fprintf(file, ")");
 }
 
-void write_expression(struct expression *e) {
+void write_expression(struct expression *e, FILE *file) {
     switch (e->kind) {
         case LITERAL_EXPRESSION:
-            write_literal_expression(&e->literal);
+            write_literal_expression(&e->literal, file);
             return;
         case UNARY_EXPRESSION:
-            write_unary_expression(&e->unary);
+            write_unary_expression(&e->unary, file);
             return;
         case BINARY_EXPRESSION:
-            write_binary_expression(&e->binary);
+            write_binary_expression(&e->binary, file);
             return;
         case GROUP_EXPRESSION:
-            write_grouped_expression(e->grouped);
+            write_grouped_expression(e->grouped, file);
             return;
         case FUNCTION_EXPRESSION:
-            write_function_expression(&e->function);
+            write_function_expression(&e->function, file);
             return;
         default:
             UNREACHABLE("expression kind not handled");
     }
 }
 
-void write_statement(struct statement *s);
+void write_statement(struct statement *s, FILE *file);
 
-void write_binding_statement(struct binding_statement *s) {
-    write_type(&s->variable_type);
-    printf(" %s = ", s->variable_name.data);
-    write_expression(&s->value);
-    printf(";");
+void write_binding_statement(struct binding_statement *s, FILE *file) {
+    write_type(&s->variable_type, file);
+    fprintf(file, " %s = ", s->variable_name.data);
+    write_expression(&s->value, file);
+    fprintf(file, ";");
 }
 
-void write_if_statement(struct if_statement *s) {
-    printf("if (");
-    write_expression(&s->condition);
-    printf(")");
-    write_statement(s->success_statement);
+void write_if_statement(struct if_statement *s, FILE *file) {
+    fprintf(file, "if (");
+    write_expression(&s->condition, file);
+    fprintf(file, ")");
+    write_statement(s->success_statement, file);
     if (s->else_statement != NULL) {
-        printf(" else ");
-        write_statement(s->else_statement);
+        fprintf(file, " else ");
+        write_statement(s->else_statement, file);
     }
 }
 
-void write_return_statement(struct expression *e) {
-    printf("return ");
-    write_expression(e);
-    printf(";");
+void write_return_statement(struct expression *e, FILE *file) {
+    fprintf(file, "return ");
+    write_expression(e, file);
+    fprintf(file, ";");
 }
 
-void write_block_statement(struct list_statement *statements) {
-    printf("{");
+void write_block_statement(struct list_statement *statements, FILE *file) {
+    fprintf(file, "{");
     for (size_t i = 0; i < statements->size; i++) {
-        write_statement(&statements->data[i]);
+        write_statement(&statements->data[i], file);
     }
-    printf("}");
+    fprintf(file, "}");
 }
 
-void write_action_statement(struct expression *e) {
-    write_expression(e);
-    printf(";");
+void write_action_statement(struct expression *e, FILE *file) {
+    write_expression(e, file);
+    fprintf(file, ";");
 }
 
-void write_while_statement(struct while_loop_statement *s) {
-    printf("while (");
-    write_expression(&s->condition);
-    printf(")");
-    write_statement(s->do_statement);
+void write_while_statement(struct while_loop_statement *s, FILE *file) {
+    fprintf(file, "while (");
+    write_expression(&s->condition, file);
+    fprintf(file, ")");
+    write_statement(s->do_statement, file);
 }
 
-void write_type_declaration_statement(struct type_declaration_statement *s) {
-    write_type(&s->type);
+void write_type_declaration_statement(struct type_declaration_statement *s, FILE *file) {
+    write_type(&s->type, file);
     if (s->statements != NULL)
     {
-        printf("{");
+        fprintf(file, "{");
         for (size_t i = 0; i < s->statements->size; i++) {
-            write_statement(&s->statements->data[i]);
+            write_statement(&s->statements->data[i], file);
         }
-        printf("}");
+        fprintf(file, "}");
     }
 }
 
-void write_statement(struct statement *s) {
+void write_statement(struct statement *s, FILE *file) {
     switch (s->kind) {
         case BINDING_STATEMENT:
-            write_binding_statement(&s->binding_statement);
+            write_binding_statement(&s->binding_statement, file);
             break;
         case IF_STATEMENT:
-            write_if_statement(&s->if_statement);
+            write_if_statement(&s->if_statement, file);
             break;
         case RETURN_STATEMENT:
-            write_return_statement(&s->expression);
+            write_return_statement(&s->expression, file);
             break;
         case BLOCK_STATEMENT:
-            write_block_statement(s->statements);
+            write_block_statement(s->statements, file);
             break;
         case ACTION_STATEMENT:
-            write_action_statement(&s->expression);
+            write_action_statement(&s->expression, file);
             break;
         case WHILE_LOOP_STATEMENT:
-            write_while_statement(&s->while_loop_statement);
+            write_while_statement(&s->while_loop_statement, file);
             break;
         case TYPE_DECLARATION_STATEMENT:
-            write_type_declaration_statement(&s->type_declaration);
+            write_type_declaration_statement(&s->type_declaration, file);
             break;
         default:
             UNREACHABLE("statement type not handled");
