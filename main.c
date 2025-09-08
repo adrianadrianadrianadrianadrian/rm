@@ -12,6 +12,7 @@ int main(int argc, char **argv) {
     }
 
     FILE *program = fopen("program.c", "w");
+    fprintf(program, "#include \"std_header.h\"\n");
     for (size_t i = 0; i < file.statements.size; i++) {
         write_statement(&file.statements.data[i], program);
     }

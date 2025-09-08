@@ -674,6 +674,7 @@ enum primitive_type {
     USIZE,
     F32,
     F64,
+    STRING
 };
 
 int is_primitive(struct list_char *raw, enum primitive_type *out)
@@ -735,6 +736,11 @@ int is_primitive(struct list_char *raw, enum primitive_type *out)
 
     if (strcmp(raw->data, "f64") == 0) {
         *out = F64;
+        return 1;
+    }
+
+    if (strcmp(raw->data, "string") == 0) {
+        *out = STRING;
         return 1;
     }
 
@@ -1588,7 +1594,7 @@ void write_primitive_type(struct type *ty, FILE *file) {
             fprintf(file, "int");
             return;
         case U64:
-            fprintf(file, "int");
+            fprintf(file, "uint64_t");
             return;
         case USIZE:
             fprintf(file, "size_t");
@@ -1601,6 +1607,9 @@ void write_primitive_type(struct type *ty, FILE *file) {
             return;
         case BOOL:
             fprintf(file, "char");
+            return;
+        case STRING:
+            fprintf(file, "struct string");
             return;
         default:
             UNREACHABLE("primitive type not handled");
@@ -1621,7 +1630,7 @@ void write_struct_type(struct type *ty, FILE *file) {
         write_type(pair.field_type, file);
         fprintf(file, " %s;", pair.field_name.data);
     }
-    fprintf(file, "}");
+    fprintf(file, "};");
 }
 
 void write_enum_type(struct type *ty, FILE *file) {
@@ -1632,7 +1641,7 @@ void write_enum_type(struct type *ty, FILE *file) {
     for (size_t i = 0; i < variant_count; i++) {
         fprintf(file, "%s_kind_%s", ty->name->data, ty->key_type_pairs.data[i].field_name.data);
         if (i < variant_count - 1) {
-            printf(",");
+            fprintf(file, ",");
         }
     }
 
