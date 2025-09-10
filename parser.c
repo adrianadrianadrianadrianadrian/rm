@@ -673,8 +673,7 @@ enum primitive_type {
     U64,
     USIZE,
     F32,
-    F64,
-    STRING
+    F64
 };
 
 int is_primitive(struct list_char *raw, enum primitive_type *out)
@@ -739,11 +738,6 @@ int is_primitive(struct list_char *raw, enum primitive_type *out)
         return 1;
     }
 
-    if (strcmp(raw->data, "string") == 0) {
-        *out = STRING;
-        return 1;
-    }
-
     return 0;
 }
 
@@ -751,7 +745,8 @@ enum type_kind {
     TY_PRIMITIVE = 1,
     TY_STRUCT,
     TY_FUNCTION,
-    TY_ENUM
+    TY_ENUM,
+    TY_USER_DEFINED
 };
 
 typedef struct key_type_pair {
@@ -777,6 +772,7 @@ typedef struct type {
         struct function_type function_type;
         enum primitive_type primitive_type;
         struct list_key_type_pair key_type_pairs;
+        struct list_char *user_defined;
     };
 } type;
 
@@ -896,8 +892,11 @@ int parse_primitive_type(struct token_buffer *s, struct type *out, int named)
 
     if (named && !get_and_expect_token(s, &name, IDENTIFIER)) return 0;
     if (named && !get_and_expect_token(s, &tmp, COLON))       return 0;
-    if (!get_and_expect_token(s, &tmp, IDENTIFIER))           return 0;
-    if (!is_primitive(tmp.identifier, &primitive_type))       return 0;
+    if (!get_token_type(s, &tmp, IDENTIFIER))                 return 0;
+    if (!is_primitive(tmp.identifier, &primitive_type)) {
+        seek_back_token(s, 1);
+        return 0;
+    }
 
     *out = (struct type) {
         .kind = TY_PRIMITIVE,
@@ -905,6 +904,19 @@ int parse_primitive_type(struct token_buffer *s, struct type *out, int named)
         .anonymous = !named,
         .name = name.identifier,
         .pointer_count = out->pointer_count
+    };
+
+    return 1;
+}
+
+int parse_user_defined_type(struct token_buffer *s,
+                            struct type *out)
+{
+    struct token tmp = {0};
+    if (!get_token_type(s, &tmp, IDENTIFIER)) return 0;
+    *out = (struct type) {
+        .kind = TY_USER_DEFINED,
+        .user_defined = tmp.identifier
     };
 
     return 1;
@@ -935,7 +947,8 @@ int parse_type(struct token_buffer *s,
         }
     }
 
-    return parse_primitive_type(s, out, named_primitive);
+    return parse_primitive_type(s, out, named_primitive)
+        || parse_user_defined_type(s, out);
 }
 
 enum expression_kind {
@@ -1608,9 +1621,6 @@ void write_primitive_type(struct type *ty, FILE *file) {
         case BOOL:
             fprintf(file, "char");
             return;
-        case STRING:
-            fprintf(file, "struct string");
-            return;
         default:
             UNREACHABLE("primitive type not handled");
     }
@@ -1657,6 +1667,11 @@ void write_enum_type(struct type *ty, FILE *file) {
     fprintf(file, "};};");
 }
 
+void write_user_defined_type(struct type *ty, FILE *file) {
+    // TODO: this is just TMP
+    fprintf(file, "struct %s", ty->user_defined->data);
+}
+
 void write_function_type(struct type *ty, FILE *file) {
     assert(ty->kind == TY_FUNCTION);
     write_type(ty->function_type.return_type, file);
@@ -1690,6 +1705,9 @@ void write_type(struct type *ty, FILE *file) {
             break;
         case TY_ENUM:
             write_enum_type(ty, file);
+            break;
+        case TY_USER_DEFINED:
+            write_user_defined_type(ty, file);
             break;
         default:
             UNREACHABLE("type kind not handled");
