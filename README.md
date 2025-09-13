@@ -19,15 +19,34 @@ oh, and I'm letting it leak memory everywhere for now.
 
 So far this compiles via compiler.sh:
 ```
-fn factorial(n: u8) -> u8 {
-    if (n == 0) {
-        return 1;
-    }
+#include <stdio.h>
 
-    return n * factorial(n - 1);
+struct person {
+    age: i32,
+    height: i32
 }
 
-fn main() -> u8 {
-    return factorial(10);
+enum result {
+    ok: person,
+    generic: i32
+}
+
+fn factorial(input: i32) -> i32 {
+    if (input == 0) {
+        return 1;
+    }
+    
+    return input * factorial(input - 1);
+}
+
+fn main() -> i32 {
+    loop_count: i32 = 11;
+
+    while (loop_count > 0) {
+        printf("Hello world! %d\n", factorial(loop_count));
+        loop_count = loop_count - 1;
+    }
+
+    return 0;
 }
 ```

@@ -12,7 +12,6 @@ int main(int argc, char **argv) {
     }
 
     FILE *program = fopen("program.c", "w");
-    fprintf(program, "#include <stdlib.h>\n"); // TEMP
     for (size_t i = 0; i < file.statements.size; i++) {
         write_statement(&file.statements.data[i], program);
     }

@@ -116,7 +116,8 @@ enum token_type {
     IDENTIFIER,
     PAREN_OPEN,
     PAREN_CLOSE,
-    ARROW,
+    RIGHT_ARROW,
+    LEFT_ARROW,
     MATH_OPERATOR,
     KEYWORD,
     COMMA,
@@ -125,7 +126,8 @@ enum token_type {
     STR_LITERAL,
     STAR,
     AND,
-    NUMERIC
+    NUMERIC,
+    HASH
 };
 
 enum keyword_type {
@@ -137,7 +139,8 @@ enum keyword_type {
     RETURN,
     BOOLEAN_TRUE,
     BOOLEAN_FALSE,
-    ELSE
+    ELSE,
+    BREAK
 };
 
 enum paren_type {
@@ -149,8 +152,6 @@ enum paren_type {
 enum math_op_type {
     EQ = 0,
     BANG,
-    GREATER,
-    LESS,
     MOD,
     DIV,
     PLUS,
@@ -201,6 +202,11 @@ int is_keyword(struct list_char *ident, enum keyword_type *out) {
 
     if (strcmp(ident->data, "return") == 0) {
         *out = RETURN;
+        return 1;
+    }
+
+    if (strcmp(ident->data, "break") == 0) {
+        *out = BREAK;
         return 1;
     }
 
@@ -262,6 +268,7 @@ int is_special_char(char c) {
         case '*':
         case '+':
         case '&':
+        case '#':
             return 1;
         default:
             return 0;
@@ -279,6 +286,13 @@ int next_token(struct file_buffer *b, struct token *out) {
             case ':': {
                 *out = (struct token) {
                     .token_type = COLON,
+                    .position = b->current_position
+                };
+                return 1;
+            }
+            case '#': {
+                *out = (struct token) {
+                    .token_type = HASH,
                     .position = b->current_position
                 };
                 return 1;
@@ -386,7 +400,14 @@ int next_token(struct file_buffer *b, struct token *out) {
             }
             case '>': {
                 *out = (struct token) {
-                    .token_type = ARROW,
+                    .token_type = RIGHT_ARROW,
+                    .position = b->current_position
+                };
+                return 1;
+            }
+            case '<': {
+                *out = (struct token) {
+                    .token_type = LEFT_ARROW,
                     .position = b->current_position
                 };
                 return 1;
@@ -447,7 +468,7 @@ int next_token(struct file_buffer *b, struct token *out) {
                 if (read_file_buffer(b, 1, &test)) {
                     if (test.value == '>') {
                         *out = (struct token) {
-                            .token_type = ARROW,
+                            .token_type = RIGHT_ARROW,
                             .position = start_position
                         };
                         return 1;
@@ -639,6 +660,10 @@ int is_return_keyword(struct token *t) {
     return t->token_type == KEYWORD && t->keyword_type == RETURN;
 }
 
+int is_break_keyword(struct token *t) {
+    return t->token_type == KEYWORD && t->keyword_type == BREAK;
+}
+
 int is_keyword_true(struct token *t) {
     return t->token_type == KEYWORD && t->keyword_type == BOOLEAN_TRUE;
 }
@@ -823,7 +848,7 @@ int parse_function_type(struct token_buffer *s, struct type *out, int named)
     if (!get_and_expect_token_where(s, &tmp, is_open_round))  return 0;
     parse_key_type_pairs(s, &params);
     if (!get_and_expect_token_where(s, &tmp, is_close_round)) return 0;
-    if (!get_and_expect_token(s, &tmp, ARROW))                return 0;
+    if (!get_and_expect_token(s, &tmp, RIGHT_ARROW))                return 0;
     if (!parse_type(s, return_type, 0, 0, 0, 0))              return 0;
 
     *out = (struct type) {
@@ -1184,7 +1209,7 @@ int parse_binary_operator(struct token_buffer *s, enum binary_operator *out)
         return 1;
     }
 
-    if (get_token_type(s, &tmp, ARROW)) {
+    if (get_token_type(s, &tmp, RIGHT_ARROW)) {
         *out = GREATER_THAN_BINARY;
         return 1;
     }
@@ -1323,7 +1348,9 @@ enum statement_kind {
     BLOCK_STATEMENT,
     ACTION_STATEMENT,
     WHILE_LOOP_STATEMENT,
-    TYPE_DECLARATION_STATEMENT
+    TYPE_DECLARATION_STATEMENT,
+    BREAK_STATEMENT,
+    INCLUDE_STATEMENT
 };
 
 struct type_declaration_statement {
@@ -1335,6 +1362,7 @@ struct binding_statement {
     struct list_char variable_name;
     struct type variable_type;
     struct expression value;
+    int has_type;
 };
 
 struct if_statement {
@@ -1348,6 +1376,11 @@ struct while_loop_statement {
     struct statement *do_statement;
 };
 
+struct include_statement {
+    struct list_char include;
+    int external;
+};
+
 typedef struct statement {
     enum statement_kind kind;
     union {
@@ -1357,6 +1390,7 @@ typedef struct statement {
         struct list_statement *statements;
         struct while_loop_statement while_loop_statement;
         struct type_declaration_statement type_declaration;
+        struct include_statement include_statement;
     };
 } statement;
 
@@ -1366,13 +1400,56 @@ APPEND_LIST(statement);
 
 int parse_statement(struct token_buffer *s, struct statement *out);
 
+int parse_include_statement(struct token_buffer *s, struct statement *out)
+{
+    int external = 0;
+    struct token tmp = {0};
+    struct list_char raw_include = {0};
+    if (!get_token_type(s, &tmp, HASH))       return 0;
+    if (!get_token_type(s, &tmp, IDENTIFIER)) return 0;
+
+    if (get_token_type(s, &tmp, LEFT_ARROW)
+        && get_token_type(s, &tmp, IDENTIFIER)) {
+        raw_include = *tmp.identifier;
+        external = 1;
+        if (!get_token_type(s, &tmp, RIGHT_ARROW)) return 0;
+    } else if (get_token_type(s, &tmp, STR_LITERAL)) {
+        raw_include = *tmp.identifier;
+    } else {
+        return 0;
+    }
+    
+    *out = (struct statement) {
+        .kind = INCLUDE_STATEMENT,
+        .include_statement = (struct include_statement) {
+            .include = raw_include,
+            .external = external
+        }
+    };
+
+    return 1;
+}
+
+int parse_break_statement(struct token_buffer *s, struct statement *out)
+{
+    struct token tmp = {0};
+    if (!get_token_where(s, &tmp, is_break_keyword)) return 0;
+    if (!get_token_type(s, &tmp, SEMICOLON))         return 0;
+
+    *out = (struct statement) {
+        .kind = BREAK_STATEMENT
+    };
+
+    return 1;
+}
+
 int parse_return_statement(struct token_buffer *s, struct statement *out)
 {
     struct token tmp = {0};
     struct expression expression = {0};
-    if (!get_token_where(s, &tmp, is_return_keyword))            return 0;
-    if (!parse_expression(s, &expression))                       return 0;
-    if (!get_and_expect_token(s, &tmp, SEMICOLON))               return 0;
+    if (!get_token_where(s, &tmp, is_return_keyword)) return 0;
+    if (!parse_expression(s, &expression))            return 0;
+    if (!get_and_expect_token(s, &tmp, SEMICOLON))    return 0;
 
     *out = (struct statement) {
         .kind = RETURN_STATEMENT,
@@ -1388,24 +1465,28 @@ int parse_binding_statement(struct token_buffer *s, struct statement *out)
     struct type type = {0};
     struct expression expression = {0};
     struct list_char variable_name = {0};
+    int has_type = 0;
 
-    if (!get_token_type(s, &tmp, IDENTIFIER))             return 0;
+    if (!get_token_type(s, &tmp, IDENTIFIER)) return 0;
     variable_name = *tmp.identifier;
-    if (!get_token_type(s, &tmp, COLON)) {
+    if (get_token_type(s, &tmp, COLON)) {
+        if (!parse_type(s, &type, 0, 0, 0, 0)) return 0;
+        has_type = 1;
+    }
+    if (!get_and_expect_token_where(s, &tmp, is_math_eq)) {
         seek_back_token(s, 1);
         return 0;
     }
-    if (!parse_type(s, &type, 0, 0, 0, 0))                return 0;
-    if (!get_and_expect_token_where(s, &tmp, is_math_eq)) return 0;
-    if (!parse_expression(s, &expression))                return 0;
-    if (!get_and_expect_token(s, &tmp, SEMICOLON))        return 0;
+    if (!parse_expression(s, &expression))         return 0;
+    if (!get_and_expect_token(s, &tmp, SEMICOLON)) return 0;
 
     *out = (struct statement) {
         .kind = BINDING_STATEMENT,
         .binding_statement = (struct binding_statement) {
             .variable_name = variable_name,
             .variable_type = type,
-            .value = expression
+            .value = expression,
+            .has_type = has_type
         }
     };
 
@@ -1545,12 +1626,14 @@ int parse_type_declaration(struct token_buffer *s, struct statement *out) {
 
 int parse_statement(struct token_buffer *s, struct statement *out) {
     return parse_return_statement(s, out)
+        || parse_break_statement(s, out)
         || parse_binding_statement(s, out)
         || parse_if_statement(s, out)
         || parse_block_statement(s, out, 1)
         || parse_action_statement(s, out)
         || parse_while_loop_statement(s, out)
-        || parse_type_declaration(s, out);
+        || parse_type_declaration(s, out)
+        || parse_include_statement(s, out);
 }
 
 struct rm_file {
@@ -1850,7 +1933,9 @@ void write_expression(struct expression *e, FILE *file) {
 void write_statement(struct statement *s, FILE *file);
 
 void write_binding_statement(struct binding_statement *s, FILE *file) {
-    write_type(&s->variable_type, file);
+    if (*&s->has_type) {
+        write_type(&s->variable_type, file);
+    }
     fprintf(file, " %s = ", s->variable_name.data);
     write_expression(&s->value, file);
     fprintf(file, ";");
@@ -1905,6 +1990,26 @@ void write_type_declaration_statement(struct type_declaration_statement *s, FILE
     }
 }
 
+void write_break_statement(FILE *file) {
+    fprintf(file, "break;");
+}
+
+void write_include_statement(struct include_statement *s, FILE *file) {
+    fprintf(file, "#include");
+    if (s->external) {
+        fprintf(file, " <");
+    } else {
+        fprintf(file, " \"");
+    }
+    fprintf(file, "%s", s->include.data);
+    if (s->external) {
+        fprintf(file, ">");
+    } else {
+        fprintf(file, "\"");
+    }
+    fprintf(file, "\n");
+}
+
 void write_statement(struct statement *s, FILE *file) {
     switch (s->kind) {
         case BINDING_STATEMENT:
@@ -1927,6 +2032,12 @@ void write_statement(struct statement *s, FILE *file) {
             break;
         case TYPE_DECLARATION_STATEMENT:
             write_type_declaration_statement(&s->type_declaration, file);
+            break;
+        case BREAK_STATEMENT:
+            write_break_statement(file);
+            break;
+        case INCLUDE_STATEMENT:
+            write_include_statement(&s->include_statement, file);
             break;
         default:
             UNREACHABLE("statement type not handled");
