@@ -14,7 +14,7 @@ struct person {
 
 enum result {
     ok: person,
-    generic: i32
+    error: i32
 }
 
 fn factorial(input: i32) -> i32 {
