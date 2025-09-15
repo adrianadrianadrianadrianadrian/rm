@@ -26,9 +26,9 @@ fn factorial(input: i32) -> i32 {
 }
 
 fn main() -> i32 {
-    something: *u8 = malloc(100);
+    mut something: *u8 = malloc(100);
     defer free(something);
-    loop_count: i32 = 11;
+    mut loop_count: i32 = 11;
     defer printf("%d != 11\n", loop_count);
 
     while (loop_count > 0) {
@@ -38,18 +38,8 @@ fn main() -> i32 {
 
     return 0;
 }
-```
 
-```
-enum result {
-    ok: struct person {
-        height: i8,
-        age: i8
-    },
-    error: i8
-};
-
-fn say_hi(person_name: string) -> void;
-
-fn nested(cb: fn(a: i8, b: u8) -> void, d: struct { f: i8 }) -> void;
+fn person_age(p: person) -> i32 {
+    return p.age;
+}
 ```

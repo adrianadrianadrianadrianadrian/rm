@@ -1,4 +1,5 @@
 test.rm
 compiler
-program.c
-program
+c_output.c
+c_output.h
+build

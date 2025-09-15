@@ -8,13 +8,10 @@ int main(int argc, char **argv) {
 
     struct rm_file file = {0};
     if (!parse_rm_file(&tok_buf, &file)) {
-        printf("failed");
+        printf("Failed to parse rm file.");
+        return 1;
     }
-
-    FILE *program = fopen("program.c", "w");
-    for (size_t i = 0; i < file.statements.size; i++) {
-        write_statement(&file.statements.data[i], program);
-    }
-
+    
+    generate_c(file);
     return 0;
 }

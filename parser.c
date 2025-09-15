@@ -109,6 +109,12 @@ void read_until(struct file_buffer *b,
     }
 }
 
+void copy_list_char(struct list_char *dest, struct list_char *src) {
+    for (size_t i = 0; i < src->size && src->data[i] != '\0'; i++) {
+        append_list_char(dest, src->data[i]);
+    }
+}
+
 // tokenisation
 enum token_type {
     SEMICOLON = 1,
@@ -127,7 +133,8 @@ enum token_type {
     STAR,
     AND,
     NUMERIC,
-    HASH
+    HASH,
+    DOT
 };
 
 enum keyword_type {
@@ -141,7 +148,8 @@ enum keyword_type {
     BOOLEAN_FALSE,
     ELSE,
     BREAK,
-    DEFER
+    DEFER,
+    MUT
 };
 
 enum paren_type {
@@ -231,6 +239,11 @@ int is_keyword(struct list_char *ident, enum keyword_type *out) {
         return 1;
     }
 
+    if (strcmp(ident->data, "mut") == 0) {
+        *out = MUT;
+        return 1;
+    }
+
     return 0;
 }
 
@@ -275,6 +288,7 @@ int is_special_char(char c) {
         case '+':
         case '&':
         case '#':
+        case '.':
             return 1;
         default:
             return 0;
@@ -428,6 +442,13 @@ int next_token(struct file_buffer *b, struct token *out) {
             case '&': {
                 *out = (struct token) {
                     .token_type = AND,
+                    .position = b->current_position
+                };
+                return 1;
+            }
+            case '.': {
+                *out = (struct token) {
+                    .token_type = DOT,
                     .position = b->current_position
                 };
                 return 1;
@@ -692,6 +713,10 @@ int is_keyword_while(struct token *t) {
 
 int is_keyword_defer(struct token *t) {
     return t->token_type == KEYWORD && t->keyword_type == DEFER;
+}
+
+int is_keyword_mut(struct token *t) {
+    return t->token_type == KEYWORD && t->keyword_type == MUT;
 }
 
 // parsing
@@ -1023,8 +1048,10 @@ enum binary_operator {
     BITWISE_OR_BINARY,
     BITWISE_AND_BINARY,
     GREATER_THAN_BINARY,
+    LESS_THAN_BINARY,
     EQUAL_TO_BINARY,
     MULTIPLY_BINARY,
+    DOT_BINARY
 };
 
 struct binary_expression {
@@ -1225,6 +1252,11 @@ int parse_binary_operator(struct token_buffer *s, enum binary_operator *out)
         return 1;
     }
 
+    if (get_token_type(s, &tmp, LEFT_ARROW)) {
+        *out = LESS_THAN_BINARY;
+        return 1;
+    }
+
     if (get_token_where(s, &tmp, is_math_eq)) {
         if (get_token_where(s, &tmp, is_math_eq)) {
             *out = EQUAL_TO_BINARY;
@@ -1233,6 +1265,11 @@ int parse_binary_operator(struct token_buffer *s, enum binary_operator *out)
             seek_back_token(s, 1);
             return 0;
         }
+    }
+
+    if (get_token_type(s, &tmp, DOT)) {
+        *out = DOT_BINARY;
+        return 1;
     }
 
     return 0;
@@ -1375,6 +1412,7 @@ struct binding_statement {
     struct type variable_type;
     struct expression value;
     int has_type;
+    int mutable;
 };
 
 struct if_statement {
@@ -1431,14 +1469,17 @@ int parse_include_statement(struct token_buffer *s, struct statement *out)
 {
     int external = 0;
     struct token tmp = {0};
-    struct list_char raw_include = {0};
-    if (!get_token_type(s, &tmp, HASH))       return 0;
-    if (!get_token_type(s, &tmp, IDENTIFIER)) return 0;
+    struct list_char raw_include = create_list_char(10);
 
-    if (get_token_type(s, &tmp, LEFT_ARROW)
-        && get_token_type(s, &tmp, IDENTIFIER)) {
-        raw_include = *tmp.identifier;
+    if (!get_token_type(s, &tmp, HASH))            return 0;
+    if (!get_token_type(s, &tmp, IDENTIFIER))      return 0;
+    if (get_token_type(s, &tmp, LEFT_ARROW) && get_token_type(s, &tmp, IDENTIFIER)) {
         external = 1;
+        copy_list_char(&raw_include, tmp.identifier);
+        if (!get_token_type(s, &tmp, DOT))         return 0;
+        if (!get_token_type(s, &tmp, IDENTIFIER))  return 0;
+        append_list_char(&raw_include, '.');
+        copy_list_char(&raw_include, tmp.identifier);
         if (!get_token_type(s, &tmp, RIGHT_ARROW)) return 0;
     } else if (get_token_type(s, &tmp, STR_LITERAL)) {
         raw_include = *tmp.identifier;
@@ -1493,11 +1534,13 @@ int parse_binding_statement(struct token_buffer *s, struct statement *out)
     struct expression expression = {0};
     struct list_char variable_name = {0};
     int has_type = 0;
-
-    if (!get_token_type(s, &tmp, IDENTIFIER)) return 0;
+    int mutable = 0;
+    
+    mutable = get_token_where(s, &tmp, is_keyword_mut);
+    if (!get_token_type(s, &tmp, IDENTIFIER))      return 0;
     variable_name = *tmp.identifier;
     if (get_token_type(s, &tmp, COLON)) {
-        if (!parse_type(s, &type, 0, 0, 0, 0)) return 0;
+        if (!parse_type(s, &type, 0, 0, 0, 0))     return 0;
         has_type = 1;
     }
     if (!get_and_expect_token_where(s, &tmp, is_math_eq)) {
@@ -1513,7 +1556,8 @@ int parse_binding_statement(struct token_buffer *s, struct statement *out)
             .variable_name = variable_name,
             .variable_type = type,
             .value = expression,
-            .has_type = has_type 
+            .has_type = has_type,
+            .mutable = mutable
         }
     };
 
@@ -1905,11 +1949,17 @@ void write_binary_expression(struct binary_expression *e, FILE *file) {
         case GREATER_THAN_BINARY:
             fprintf(file, " > ");
             break;
+        case LESS_THAN_BINARY:
+            fprintf(file, " < ");
+            break;
         case EQUAL_TO_BINARY:
             fprintf(file, " == ");
             break;
         case MULTIPLY_BINARY:
             fprintf(file, " * ");
+            break;
+        case DOT_BINARY:
+            fprintf(file, ".");
             break;
         default:
             UNREACHABLE("binary operator not handled");
@@ -1961,6 +2011,9 @@ void write_statement(struct statement *s, FILE *file);
 
 void write_binding_statement(struct binding_statement *s, FILE *file) {
     if (*&s->has_type) {
+        if (!*&s->mutable) {
+            fprintf(file, "const ");
+        }
         write_type(&s->variable_type, file);
     }
     fprintf(file, " %s = ", s->variable_name.data);
@@ -2096,4 +2149,60 @@ void write_statement(struct statement *s, FILE *file) {
         default:
             UNREACHABLE("statement type not handled");
     }
+}
+
+struct generated_c_state {
+    struct list_type *data_types;
+    struct list_type *fn_types;
+};
+
+static void generate_c_file(struct rm_file file, struct generated_c_state *state) {
+    FILE *program = fopen("c_output.c", "w");
+    fprintf(program, "#include \"c_output.h\"\n");
+    for (size_t i = 0; i < file.statements.size; i++) {
+        struct statement s = file.statements.data[i];
+
+        if (s.kind == TYPE_DECLARATION_STATEMENT
+            && (s.type_declaration.type.kind == TY_ENUM
+                || s.type_declaration.type.kind == TY_STRUCT))
+        {
+            append_list_type(state->data_types, s.type_declaration.type);
+            continue;
+        }
+
+        if (s.kind == TYPE_DECLARATION_STATEMENT
+            && s.type_declaration.type.kind == TY_FUNCTION)
+        {
+            append_list_type(state->fn_types, s.type_declaration.type);
+        }
+
+        write_statement(&file.statements.data[i], program);
+    }
+}
+
+void generate_c_header(struct generated_c_state *state) {
+    FILE *header = fopen("c_output.h", "w");
+    fprintf(header, "#ifndef C_OUTPUT_H\n#define C_OUTPUT_H\n");
+
+    for (size_t i = 0; i < state->data_types->size; i++) {
+        write_type(&state->data_types->data[i], header);
+    }
+
+    for (size_t i = 0; i < state->fn_types->size; i++) {
+        write_type(&state->fn_types->data[i], header);
+        fprintf(header, ";");
+    }
+    
+    fprintf(header, "\n#endif");
+}
+
+void generate_c(struct rm_file file) {
+    struct list_type data_types = create_list_type(100);
+    struct list_type fn_types = create_list_type(100);
+    struct generated_c_state state = {
+        .data_types = &data_types,
+        .fn_types = &fn_types
+    };
+    generate_c_file(file, &state);
+    generate_c_header(&state);
 }
