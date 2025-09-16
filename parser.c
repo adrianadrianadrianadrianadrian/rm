@@ -719,6 +719,14 @@ int is_keyword_mut(struct token *t) {
     return t->token_type == KEYWORD && t->keyword_type == MUT;
 }
 
+int is_keyword_struct(struct token *t) {
+    return t->token_type == KEYWORD && t->keyword_type == STRUCT;
+}
+
+int is_keyword_enum(struct token *t) {
+    return t->token_type == KEYWORD && t->keyword_type == ENUM;
+}
+
 // parsing
 enum primitive_type {
     UNIT = 1,
@@ -1026,7 +1034,23 @@ enum literal_expression_kind {
     LITERAL_STR,
     LITERAL_NUMERIC,
     LITERAL_NAME,
-    LITERAL_HOLE
+    LITERAL_HOLE,
+    LITERAL_STRUCT,
+    LITERAL_ENUM
+};
+
+typedef struct key_expression {
+    struct list_char *key;
+    struct expression *expression;
+} key_expression;
+
+LIST(key_expression);
+CREATE_LIST(key_expression);
+APPEND_LIST(key_expression);
+    
+struct literal_struct_enum {
+    struct list_char *name;
+    struct list_key_expression key_expr_pairs;
 };
 
 struct literal_expression {
@@ -1037,6 +1061,7 @@ struct literal_expression {
         struct list_char *str;
         double numeric;
         struct list_char *name;
+        struct literal_struct_enum struct_enum;
     };
 };
 
@@ -1179,6 +1204,59 @@ int parse_identifier_literal_expression(struct token_buffer *s,
     return 1;
 }
 
+int parse_struct_enum_literal_expression(struct token_buffer *s,
+                                         struct literal_expression *out)
+{
+    // TODO: go with this goto approach for all parsers?
+    size_t start_position = s->current_position;
+    struct token tmp = {0};
+    struct token name = {0};
+    enum literal_expression_kind kind = 0;
+
+    if (get_token_where(s, &tmp, is_keyword_struct)) {
+        kind = LITERAL_STRUCT;
+    } else if (get_token_where(s, &tmp, is_keyword_enum)) {
+        kind = LITERAL_ENUM;
+    } else {
+        goto error;
+    }
+
+    if (!get_token_type(s, &name, IDENTIFIER)) goto error;
+    if (!get_token_where(s, &tmp, is_open_curly)) goto error;
+
+    struct list_key_expression pairs = create_list_key_expression(10);
+    int should_continue = 1;
+    while (should_continue) {
+        struct key_expression pair = {0};
+        if (!get_token_type(s, &tmp, IDENTIFIER)) goto error;
+        pair.key = tmp.identifier;
+        if (!get_token_where(s, &tmp, is_math_eq)) goto error;
+        struct expression *e = malloc(sizeof(*e));
+        if (!parse_expression(s, e)) goto error;
+        pair.expression = e;
+        append_list_key_expression(&pairs, pair);
+        should_continue = get_token_type(s, &tmp, COMMA);
+    }
+    
+    if (!get_token_where(s, &tmp, is_close_curly)) goto error;
+
+    *out = (struct literal_expression) {
+        .kind = kind,
+        .struct_enum = (struct literal_struct_enum) {
+            .name = name.identifier,
+            .key_expr_pairs = pairs
+        }
+    };
+
+    return 1;
+
+    error:
+        if (s->current_position != start_position) {
+            seek_back_token(s, s->current_position - start_position);
+        }
+        return 0; 
+}
+
 int parse_literal_expression(struct token_buffer *s,
                              struct literal_expression *out)
 {
@@ -1186,7 +1264,8 @@ int parse_literal_expression(struct token_buffer *s,
         || parse_str_literal_expression(s, out)
         || parse_numeric_literal_expression(s, out)
         || parse_boolean_literal_expression(s, out)
-        || parse_identifier_literal_expression(s, out);
+        || parse_identifier_literal_expression(s, out)
+        || parse_struct_enum_literal_expression(s, out);
 }
 
 int parse_unary_operator(struct token_buffer *s,
@@ -1904,7 +1983,25 @@ void write_literal_expression(struct literal_expression *e, FILE *file) {
         case LITERAL_HOLE:
             TODO("write hole");
             break;
-    }
+        case LITERAL_STRUCT:
+        {
+            fprintf(file, "(struct %s) {", e->struct_enum.name->data);
+            size_t pair_count = e->struct_enum.key_expr_pairs.size;
+            for (size_t i = 0; i < pair_count; i++) {
+                struct key_expression pair = e->struct_enum.key_expr_pairs.data[i];
+                fprintf(file, ".%s = ", pair.key->data);
+                write_expression(pair.expression, file);
+                if (i + 1 < pair_count) {
+                    fprintf(file, ",");
+                }
+            }
+            fprintf(file, "}");
+            break;
+        }
+        case LITERAL_ENUM:
+            TODO("literal enum");
+            break;
+        }
 }
 
 void write_unary_expression(struct unary_expression *e, FILE *file) {
