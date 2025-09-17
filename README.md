@@ -9,7 +9,8 @@ So far this compiles via compiler.sh:
 
 struct person {
     age: i32,
-    height: i32
+    height: i32,
+    sibling: ?*person
 }
 
 enum result {
@@ -26,9 +27,9 @@ fn factorial(input: i32) -> i32 {
 }
 
 fn main() -> i32 {
-    mut something: *u8 = malloc(100);
+    something: mut ?*u8 = malloc(100);
     defer free(something);
-    mut loop_count: i32 = 11;
+    loop_count: mut i32 = 11;
     defer printf("%d != 11\n", loop_count);
 
     while (loop_count > 0) {

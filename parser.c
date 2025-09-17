@@ -134,22 +134,24 @@ enum token_type {
     AND,
     NUMERIC,
     HASH,
-    DOT
+    DOT,
+    QUESTION_MARK
 };
 
 enum keyword_type {
-    FN = 1,
-    ENUM,
-    STRUCT,
-    IF,
-    WHILE,
-    RETURN,
-    BOOLEAN_TRUE,
-    BOOLEAN_FALSE,
-    ELSE,
-    BREAK,
-    DEFER,
-    MUT
+    FN_KEYWORD = 1,
+    ENUM_KEYWORD,
+    STRUCT_KEYWORD,
+    IF_KEYWORD,
+    WHILE_KEYWORD,
+    RETURN_KEYWORD,
+    BOOLEAN_TRUE_KEYWORD,
+    BOOLEAN_FALSE_KEYWORD,
+    ELSE_KEYWORD,
+    BREAK_KEYWORD,
+    DEFER_KEYWORD,
+    MUTABLE_KEYWORD,
+    NULL_KEYWORD
 };
 
 enum paren_type {
@@ -185,62 +187,67 @@ APPEND_LIST(token);
 
 int is_keyword(struct list_char *ident, enum keyword_type *out) {
     if (strcmp(ident->data, "fn") == 0) {
-        *out = FN;
+        *out = FN_KEYWORD;
         return 1;
     }
 
     if (strcmp(ident->data, "enum") == 0) {
-        *out = ENUM;
+        *out = ENUM_KEYWORD;
         return 1;
     }
 
     if (strcmp(ident->data, "struct") == 0) {
-        *out = STRUCT;
+        *out = STRUCT_KEYWORD;
         return 1;
     }
 
     if (strcmp(ident->data, "if") == 0) {
-        *out = IF;
+        *out = IF_KEYWORD;
         return 1;
     }
 
     if (strcmp(ident->data, "while") == 0) {
-        *out = WHILE;
+        *out = WHILE_KEYWORD;
         return 1;
     }
 
     if (strcmp(ident->data, "return") == 0) {
-        *out = RETURN;
+        *out = RETURN_KEYWORD;
         return 1;
     }
 
     if (strcmp(ident->data, "break") == 0) {
-        *out = BREAK;
+        *out = BREAK_KEYWORD;
         return 1;
     }
 
     if (strcmp(ident->data, "true") == 0) {
-        *out = BOOLEAN_TRUE;
+        *out = BOOLEAN_TRUE_KEYWORD;
         return 1;
     }
 
     if (strcmp(ident->data, "false") == 0) {
-        *out = BOOLEAN_FALSE;
+        *out = BOOLEAN_FALSE_KEYWORD;
         return 1;
     }
 
     if (strcmp(ident->data, "else") == 0) {
-        *out = ELSE;
+        *out = ELSE_KEYWORD;
         return 1;
     }
 
     if (strcmp(ident->data, "defer") == 0) {
-        *out = DEFER;
+        *out = DEFER_KEYWORD;
         return 1;
     }
 
     if (strcmp(ident->data, "mut") == 0) {
-        *out = MUT;
+        *out = MUTABLE_KEYWORD;
+        return 1;
+    }
+
+    if (strcmp(ident->data, "null") == 0) {
+        *out = NULL_KEYWORD;
         return 1;
     }
 
@@ -289,6 +296,7 @@ int is_special_char(char c) {
         case '&':
         case '#':
         case '.':
+        case '?':
             return 1;
         default:
             return 0;
@@ -449,6 +457,13 @@ int next_token(struct file_buffer *b, struct token *out) {
             case '.': {
                 *out = (struct token) {
                     .token_type = DOT,
+                    .position = b->current_position
+                };
+                return 1;
+            }
+            case '?': {
+                *out = (struct token) {
+                    .token_type = QUESTION_MARK,
                     .position = b->current_position
                 };
                 return 1;
@@ -684,47 +699,51 @@ int is_math_plus(struct token *t) {
 }
 
 int is_return_keyword(struct token *t) {
-    return t->token_type == KEYWORD && t->keyword_type == RETURN;
+    return t->token_type == KEYWORD && t->keyword_type == RETURN_KEYWORD;
 }
 
 int is_break_keyword(struct token *t) {
-    return t->token_type == KEYWORD && t->keyword_type == BREAK;
+    return t->token_type == KEYWORD && t->keyword_type == BREAK_KEYWORD;
 }
 
 int is_keyword_true(struct token *t) {
-    return t->token_type == KEYWORD && t->keyword_type == BOOLEAN_TRUE;
+    return t->token_type == KEYWORD && t->keyword_type == BOOLEAN_TRUE_KEYWORD;
 }
 
 int is_keyword_false(struct token *t) {
-    return t->token_type == KEYWORD && t->keyword_type == BOOLEAN_FALSE;
+    return t->token_type == KEYWORD && t->keyword_type == BOOLEAN_FALSE_KEYWORD;
 }
 
 int is_keyword_if(struct token *t) {
-    return t->token_type == KEYWORD && t->keyword_type == IF;
+    return t->token_type == KEYWORD && t->keyword_type == IF_KEYWORD;
 }
 
 int is_keyword_else(struct token *t) {
-    return t->token_type == KEYWORD && t->keyword_type == ELSE;
+    return t->token_type == KEYWORD && t->keyword_type == ELSE_KEYWORD;
 }
 
 int is_keyword_while(struct token *t) {
-    return t->token_type == KEYWORD && t->keyword_type == WHILE;
+    return t->token_type == KEYWORD && t->keyword_type == WHILE_KEYWORD;
 }
 
 int is_keyword_defer(struct token *t) {
-    return t->token_type == KEYWORD && t->keyword_type == DEFER;
+    return t->token_type == KEYWORD && t->keyword_type == DEFER_KEYWORD;
 }
 
 int is_keyword_mut(struct token *t) {
-    return t->token_type == KEYWORD && t->keyword_type == MUT;
+    return t->token_type == KEYWORD && t->keyword_type == MUTABLE_KEYWORD;
 }
 
 int is_keyword_struct(struct token *t) {
-    return t->token_type == KEYWORD && t->keyword_type == STRUCT;
+    return t->token_type == KEYWORD && t->keyword_type == STRUCT_KEYWORD;
 }
 
 int is_keyword_enum(struct token *t) {
-    return t->token_type == KEYWORD && t->keyword_type == ENUM;
+    return t->token_type == KEYWORD && t->keyword_type == ENUM_KEYWORD;
+}
+
+int is_keyword_null(struct token *t) {
+    return t->token_type == KEYWORD && t->keyword_type == NULL_KEYWORD;
 }
 
 // parsing
@@ -849,6 +868,7 @@ typedef struct type {
     enum type_kind kind;
     int anonymous;
     struct list_char *name;
+    int nullable;
     int pointer_count;
     union {
         struct function_type function_type;
@@ -915,8 +935,7 @@ int parse_function_type(struct token_buffer *s, struct type *out, int named)
             .return_type = return_type
         },
         .anonymous = !named,
-        .name = name.identifier,
-        .pointer_count = out->pointer_count
+        .name = name.identifier
     };
 
     return 1;
@@ -937,8 +956,7 @@ int parse_struct_type(struct token_buffer *s, struct type *out, int named)
         .kind = TY_STRUCT,
         .key_type_pairs = pairs,
         .name = name.identifier,
-        .anonymous = !named,
-        .pointer_count = out->pointer_count
+        .anonymous = !named
     };
 
     return 1;
@@ -959,8 +977,7 @@ int parse_enum_type(struct token_buffer *s, struct type *out, int named)
         .kind = TY_ENUM,
         .key_type_pairs = pairs,
         .name = name.identifier,
-        .anonymous = !named,
-        .pointer_count = out->pointer_count
+        .anonymous = !named
     };
 
     return 1;
@@ -981,8 +998,7 @@ int parse_primitive_type(struct token_buffer *s, struct type *out, int named)
         .kind = TY_PRIMITIVE,
         .primitive_type = primitive_type,
         .anonymous = !named,
-        .name = name.identifier,
-        .pointer_count = out->pointer_count
+        .name = name.identifier
     };
 
     return 1;
@@ -1019,17 +1035,22 @@ int parse_type(struct token_buffer *s,
                int named_primitive)
 {
     struct token tmp = {0};
+    int nullable = get_token_type(s, &tmp, QUESTION_MARK);
+    int pointer_count = 0;
+    
     while (get_token_type(s, &tmp, STAR)) {
-        out->pointer_count += 1;
+        pointer_count += 1;
     }
+
+    nullable = get_token_type(s, &tmp, QUESTION_MARK);
 
     if (get_token_type(s, &tmp, KEYWORD)) {
         switch (tmp.keyword_type) {
-            case FN:
+            case FN_KEYWORD:
                 return parse_function_type(s, out, named_fn);
-            case ENUM:
+            case ENUM_KEYWORD:
                 return parse_enum_type(s, out, named_enum);
-            case STRUCT:
+            case STRUCT_KEYWORD:
                 return parse_struct_type(s, out, named_struct);
             default:
                 seek_back_token(s, 1);
@@ -1037,10 +1058,17 @@ int parse_type(struct token_buffer *s,
         }
     }
 
-    return try_parse(s, out, named_primitive 
+    int success = try_parse(s, out, named_primitive 
             ? (parser_t)parse_named_primitive_type
             : (parser_t)parse_unnamed_primitive_type)
         || try_parse(s, out, (parser_t)parse_user_defined_type);
+    
+    if (success) {
+        out->nullable = nullable,
+        out->pointer_count = pointer_count;
+    }
+    
+    return success;
 }
 
 enum expression_kind {
@@ -1059,7 +1087,8 @@ enum literal_expression_kind {
     LITERAL_NAME,
     LITERAL_HOLE,
     LITERAL_STRUCT,
-    LITERAL_ENUM
+    LITERAL_ENUM,
+    LITERAL_NULL
 };
 
 typedef struct key_expression {
@@ -1272,6 +1301,19 @@ int parse_struct_enum_literal_expression(struct token_buffer *s,
     return 1;
 }
 
+int parse_null_literal_expression(struct token_buffer *s,
+                                  struct literal_expression *out)
+{
+    struct token tmp = {0};
+    if (!get_token_where(s, &tmp, is_keyword_null)) return 0;
+
+    *out = (struct literal_expression) {
+        .kind = LITERAL_NULL,
+    };
+
+    return 1;
+}
+
 int parse_literal_expression(struct token_buffer *s,
                              struct literal_expression *out)
 {
@@ -1280,7 +1322,8 @@ int parse_literal_expression(struct token_buffer *s,
         || try_parse(s, out, (parser_t)parse_numeric_literal_expression)
         || try_parse(s, out, (parser_t)parse_boolean_literal_expression)
         || try_parse(s, out, (parser_t)parse_identifier_literal_expression)
-        || try_parse(s, out, (parser_t)parse_struct_enum_literal_expression);
+        || try_parse(s, out, (parser_t)parse_struct_enum_literal_expression)
+        || try_parse(s, out, (parser_t)parse_null_literal_expression);
 }
 
 int parse_unary_operator(struct token_buffer *s,
@@ -1629,10 +1672,10 @@ int parse_binding_statement(struct token_buffer *s, struct statement *out)
     int has_type = 0;
     int mutable = 0;
     
-    mutable = get_token_where(s, &tmp, is_keyword_mut);
     if (!get_token_type(s, &tmp, IDENTIFIER))             return 0;
     variable_name = *tmp.identifier;
     if (get_token_type(s, &tmp, COLON)) {
+        mutable = get_token_where(s, &tmp, is_keyword_mut);
         if (!parse_type(s, &type, 0, 0, 0, 0))            return 0;
         has_type = 1;
     }
@@ -2019,6 +2062,10 @@ void write_literal_expression(struct literal_expression *e, FILE *file) {
         }
         case LITERAL_ENUM:
             TODO("literal enum");
+            break;
+        case LITERAL_NULL:
+            // TODO: this is tmp
+            fprintf(file, "NULL");
             break;
         }
 }
