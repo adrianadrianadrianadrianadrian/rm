@@ -728,6 +728,20 @@ int is_keyword_enum(struct token *t) {
 }
 
 // parsing
+#define parser_t int (*)(struct token_buffer *, void *)
+int try_parse(struct token_buffer *s,
+              void *out,
+              int (*parser)(struct token_buffer *, void *))
+{
+    size_t start = s->current_position;
+    if (!parser(s, out)) {
+        seek_back_token(s, s->current_position - start);
+        return 0;
+    }
+    
+    return 1;
+}
+
 enum primitive_type {
     UNIT = 1,
     BOOL,
@@ -961,10 +975,7 @@ int parse_primitive_type(struct token_buffer *s, struct type *out, int named)
     if (named && !get_and_expect_token(s, &name, IDENTIFIER)) return 0;
     if (named && !get_and_expect_token(s, &tmp, COLON))       return 0;
     if (!get_token_type(s, &tmp, IDENTIFIER))                 return 0;
-    if (!is_primitive(tmp.identifier, &primitive_type)) {
-        seek_back_token(s, 1);
-        return 0;
-    }
+    if (!is_primitive(tmp.identifier, &primitive_type))       return 0;
 
     *out = (struct type) {
         .kind = TY_PRIMITIVE,
@@ -975,6 +986,16 @@ int parse_primitive_type(struct token_buffer *s, struct type *out, int named)
     };
 
     return 1;
+}
+
+int parse_named_primitive_type(struct token_buffer *s, struct type *out)
+{
+    return parse_primitive_type(s, out, 1);
+}
+
+int parse_unnamed_primitive_type(struct token_buffer *s, struct type *out)
+{
+    return parse_primitive_type(s, out, 0);
 }
 
 int parse_user_defined_type(struct token_buffer *s,
@@ -1016,8 +1037,10 @@ int parse_type(struct token_buffer *s,
         }
     }
 
-    return parse_primitive_type(s, out, named_primitive)
-        || parse_user_defined_type(s, out);
+    return try_parse(s, out, named_primitive 
+            ? (parser_t)parse_named_primitive_type
+            : (parser_t)parse_unnamed_primitive_type)
+        || try_parse(s, out, (parser_t)parse_user_defined_type);
 }
 
 enum expression_kind {
@@ -1184,7 +1207,7 @@ int parse_str_literal_expression(struct token_buffer *s,
 }
 
 int parse_identifier_literal_expression(struct token_buffer *s,
-                                  struct literal_expression *out)
+                                        struct literal_expression *out)
 {
     struct token tmp = {0};
     if (!get_token_type(s, &tmp, IDENTIFIER)) return 0;
@@ -1207,8 +1230,6 @@ int parse_identifier_literal_expression(struct token_buffer *s,
 int parse_struct_enum_literal_expression(struct token_buffer *s,
                                          struct literal_expression *out)
 {
-    // TODO: go with this goto approach for all parsers?
-    size_t start_position = s->current_position;
     struct token tmp = {0};
     struct token name = {0};
     enum literal_expression_kind kind = 0;
@@ -1218,27 +1239,27 @@ int parse_struct_enum_literal_expression(struct token_buffer *s,
     } else if (get_token_where(s, &tmp, is_keyword_enum)) {
         kind = LITERAL_ENUM;
     } else {
-        goto error;
+        return 0;
     }
 
-    if (!get_token_type(s, &name, IDENTIFIER)) goto error;
-    if (!get_token_where(s, &tmp, is_open_curly)) goto error;
+    if (!get_token_type(s, &name, IDENTIFIER))    return 0;
+    if (!get_token_where(s, &tmp, is_open_curly)) return 0;
 
     struct list_key_expression pairs = create_list_key_expression(10);
     int should_continue = 1;
     while (should_continue) {
         struct key_expression pair = {0};
-        if (!get_token_type(s, &tmp, IDENTIFIER)) goto error;
+        if (!get_token_type(s, &tmp, IDENTIFIER))  return 0;
         pair.key = tmp.identifier;
-        if (!get_token_where(s, &tmp, is_math_eq)) goto error;
+        if (!get_token_where(s, &tmp, is_math_eq)) return 0;
         struct expression *e = malloc(sizeof(*e));
-        if (!parse_expression(s, e)) goto error;
+        if (!parse_expression(s, e))               return 0;
         pair.expression = e;
         append_list_key_expression(&pairs, pair);
         should_continue = get_token_type(s, &tmp, COMMA);
     }
     
-    if (!get_token_where(s, &tmp, is_close_curly)) goto error;
+    if (!get_token_where(s, &tmp, is_close_curly)) return 0;
 
     *out = (struct literal_expression) {
         .kind = kind,
@@ -1249,23 +1270,17 @@ int parse_struct_enum_literal_expression(struct token_buffer *s,
     };
 
     return 1;
-
-    error:
-        if (s->current_position != start_position) {
-            seek_back_token(s, s->current_position - start_position);
-        }
-        return 0; 
 }
 
 int parse_literal_expression(struct token_buffer *s,
                              struct literal_expression *out)
 {
-    return parse_char_literal_expression(s, out)
-        || parse_str_literal_expression(s, out)
-        || parse_numeric_literal_expression(s, out)
-        || parse_boolean_literal_expression(s, out)
-        || parse_identifier_literal_expression(s, out)
-        || parse_struct_enum_literal_expression(s, out);
+    return try_parse(s, out, (parser_t)parse_char_literal_expression)
+        || try_parse(s, out, (parser_t)parse_str_literal_expression)
+        || try_parse(s, out, (parser_t)parse_numeric_literal_expression)
+        || try_parse(s, out, (parser_t)parse_boolean_literal_expression)
+        || try_parse(s, out, (parser_t)parse_identifier_literal_expression)
+        || try_parse(s, out, (parser_t)parse_struct_enum_literal_expression);
 }
 
 int parse_unary_operator(struct token_buffer *s,
@@ -1358,11 +1373,8 @@ int parse_function_expression(struct token_buffer *s, struct function_expression
 {
     struct token tmp = {0};
     struct token name = {0};
-    if (!get_token_type(s, &name, IDENTIFIER)) return 0;
-    if (!get_token_where(s, &tmp, is_open_round)) {
-        seek_back_token(s, 1);
-        return 0;
-    }
+    if (!get_token_type(s, &name, IDENTIFIER))    return 0;
+    if (!get_token_where(s, &tmp, is_open_round)) return 0;
 
     struct list_expression *params = malloc(sizeof(*params));
     *params = create_list_expression(10);
@@ -1416,7 +1428,7 @@ int parse_expression_inner(struct token_buffer *s, struct expression *out) {
     }
 
     struct function_expression function = {0};
-    if (parse_function_expression(s, &function)) {
+    if (try_parse(s, &function, (parser_t) parse_function_expression)) {
         *out = (struct expression) {
             .kind = FUNCTION_EXPRESSION,
             .function = function
@@ -1552,7 +1564,9 @@ int parse_include_statement(struct token_buffer *s, struct statement *out)
 
     if (!get_token_type(s, &tmp, HASH))            return 0;
     if (!get_token_type(s, &tmp, IDENTIFIER))      return 0;
-    if (get_token_type(s, &tmp, LEFT_ARROW) && get_token_type(s, &tmp, IDENTIFIER)) {
+    if (get_token_type(s, &tmp, LEFT_ARROW)
+        && get_token_type(s, &tmp, IDENTIFIER))
+    {
         external = 1;
         copy_list_char(&raw_include, tmp.identifier);
         if (!get_token_type(s, &tmp, DOT))         return 0;
@@ -1616,18 +1630,15 @@ int parse_binding_statement(struct token_buffer *s, struct statement *out)
     int mutable = 0;
     
     mutable = get_token_where(s, &tmp, is_keyword_mut);
-    if (!get_token_type(s, &tmp, IDENTIFIER))      return 0;
+    if (!get_token_type(s, &tmp, IDENTIFIER))             return 0;
     variable_name = *tmp.identifier;
     if (get_token_type(s, &tmp, COLON)) {
-        if (!parse_type(s, &type, 0, 0, 0, 0))     return 0;
+        if (!parse_type(s, &type, 0, 0, 0, 0))            return 0;
         has_type = 1;
     }
-    if (!get_and_expect_token_where(s, &tmp, is_math_eq)) {
-        seek_back_token(s, 1);
-        return 0;
-    }
-    if (!parse_expression(s, &expression))         return 0;
-    if (!get_and_expect_token(s, &tmp, SEMICOLON)) return 0;
+    if (!get_and_expect_token_where(s, &tmp, is_math_eq)) return 0;
+    if (!parse_expression(s, &expression))                return 0;
+    if (!get_and_expect_token(s, &tmp, SEMICOLON))        return 0;
 
     *out = (struct statement) {
         .kind = BINDING_STATEMENT,
@@ -1676,7 +1687,15 @@ int parse_block_statement(struct token_buffer *s,
     return 1;
 }
 
-int parse_if_statement(struct token_buffer *s, struct statement *out) {
+int parse_block_statement_with_semicolon(struct token_buffer *s,
+                                         struct statement *out)
+{
+    return parse_block_statement(s, out, 1);
+}
+
+int parse_if_statement(struct token_buffer *s,
+                       struct statement *out)
+{
     struct token tmp = {0};
     struct expression condition = {0};
     struct statement *success_statement = malloc(sizeof(*success_statement));
@@ -1774,16 +1793,16 @@ int parse_type_declaration(struct token_buffer *s, struct statement *out) {
 }
 
 int parse_statement(struct token_buffer *s, struct statement *out) {
-    return parse_return_statement(s, out)
-        || parse_break_statement(s, out)
-        || parse_defer_statement(s, out)
-        || parse_binding_statement(s, out)
-        || parse_if_statement(s, out)
-        || parse_block_statement(s, out, 1)
-        || parse_action_statement(s, out)
-        || parse_while_loop_statement(s, out)
-        || parse_type_declaration(s, out)
-        || parse_include_statement(s, out);
+    return try_parse(s, out, (parser_t)parse_return_statement)
+        || try_parse(s, out, (parser_t)parse_break_statement)
+        || try_parse(s, out, (parser_t)parse_defer_statement)
+        || try_parse(s, out, (parser_t)parse_binding_statement)
+        || try_parse(s, out, (parser_t)parse_if_statement)
+        || try_parse(s, out, (parser_t)parse_block_statement_with_semicolon)
+        || try_parse(s, out, (parser_t)parse_action_statement)
+        || try_parse(s, out, (parser_t)parse_while_loop_statement)
+        || try_parse(s, out, (parser_t)parse_type_declaration)
+        || try_parse(s, out, (parser_t)parse_include_statement);
 }
 
 struct rm_file {
