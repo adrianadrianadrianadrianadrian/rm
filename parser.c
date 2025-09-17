@@ -2172,6 +2172,11 @@ void write_expression(struct expression *e, FILE *file) {
 
 void write_statement(struct statement *s, FILE *file);
 
+void write_type_default(struct type *type, FILE *file) {
+    // TODO: derive default C values 
+    fprintf(file, "0");
+}
+
 void write_binding_statement(struct binding_statement *s, FILE *file) {
     if (*&s->has_type) {
         if (!*&s->mutable) {
@@ -2180,7 +2185,13 @@ void write_binding_statement(struct binding_statement *s, FILE *file) {
         write_type(&s->variable_type, file);
     }
     fprintf(file, " %s = ", s->variable_name.data);
-    write_expression(&s->value, file);
+    if (s->value.kind == LITERAL_EXPRESSION
+        && s->value.literal.kind == LITERAL_NULL) {
+        // TODO: check has_type
+        write_type_default(&s->variable_type, file);
+    } else {
+        write_expression(&s->value, file);
+    }
     fprintf(file, ";");
 }
 

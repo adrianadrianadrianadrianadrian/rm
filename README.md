@@ -31,6 +31,7 @@ fn main() -> i32 {
     defer free(something);
     loop_count: mut i32 = 11;
     defer printf("%d != 11\n", loop_count);
+    i: ?i32 = null;
 
     while (loop_count > 0) {
         printf("Hello world! %d\n", factorial(loop_count));
