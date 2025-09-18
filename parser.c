@@ -810,6 +810,11 @@ int is_primitive(struct list_char *raw, enum primitive_type *out)
     }
 
     if (strcmp(raw->data, "i32") == 0) {
+        *out = I32;
+        return 1;
+    }
+
+    if (strcmp(raw->data, "u32") == 0) {
         *out = U32;
         return 1;
     }
@@ -847,7 +852,8 @@ enum type_kind {
     TY_STRUCT,
     TY_FUNCTION,
     TY_ENUM,
-    TY_USER_DEFINED
+    TY_USER_DEFINED,
+    TY_ARRAY
 };
 
 typedef struct key_type_pair {
@@ -864,6 +870,11 @@ struct function_type {
     struct type *return_type;
 };
 
+struct array_type {
+    struct type *inner_type;
+    size_t size;
+};
+
 typedef struct type {
     enum type_kind kind;
     int anonymous;
@@ -875,6 +886,7 @@ typedef struct type {
         enum primitive_type primitive_type;
         struct list_key_type_pair key_type_pairs;
         struct list_char *user_defined;
+        struct array_type array_type;
     };
 } type;
 
@@ -1027,6 +1039,31 @@ int parse_user_defined_type(struct token_buffer *s,
     return 1;
 }
 
+int parse_array_type(struct token_buffer *s,
+                     struct type *out)
+{
+    struct token tmp = {0};
+    struct type *inner_type = malloc(sizeof(*inner_type));
+    size_t size = 0;
+
+    if (!get_token_where(s, &tmp, is_open_square))  return 0;
+    if (!parse_type(s, inner_type, 0, 0, 0, 0))     return 0;
+    if (!get_token_type(s, &tmp, SEMICOLON))        return 0;
+    if (!get_token_type(s, &tmp, NUMERIC))          return 0;
+    size = tmp.numeric;
+    if (!get_token_where(s, &tmp, is_close_square)) return 0;
+    
+    *out = (struct type) {
+        .kind = TY_ARRAY,
+        .array_type = (struct array_type) {
+            .inner_type = inner_type,
+            .size = size
+        }
+    };
+
+    return 1;
+}
+
 int parse_type(struct token_buffer *s,
                struct type *out,
                int named_fn,
@@ -1056,6 +1093,10 @@ int parse_type(struct token_buffer *s,
                 seek_back_token(s, 1);
                 return 0;
         }
+    }
+
+    if (try_parse(s, out, (parser_t)parse_array_type)) {
+        return 1;
     }
 
     int success = try_parse(s, out, named_primitive 
@@ -1881,28 +1922,28 @@ void write_primitive_type(struct type *ty, FILE *file) {
             fprintf(file, "void");
             return;
         case I8:
-            fprintf(file, "int");
+            fprintf(file, "char");
             return;
         case U8:
-            fprintf(file, "int");
+            fprintf(file, "unsigned char");
             return;
         case I16:
             fprintf(file, "int");
             return;
         case U16:
-            fprintf(file, "int");
+            fprintf(file, "unsigned int");
             return;
         case I32:
             fprintf(file, "int");
             return;
         case U32:
-            fprintf(file, "int");
+            fprintf(file, "unsigned int");
             return;
         case I64:
-            fprintf(file, "int");
+            fprintf(file, "long");
             return;
         case U64:
-            fprintf(file, "uint64_t");
+            fprintf(file, "unsigned long");
             return;
         case USIZE:
             fprintf(file, "size_t");
@@ -1933,12 +1974,17 @@ void write_struct_type(struct type *ty, FILE *file) {
     for (size_t i = 0; i < pair_count; i++) {
         struct key_type_pair pair = ty->key_type_pairs.data[i];
         write_type(pair.field_type, file);
-        fprintf(file, " %s;", pair.field_name.data);
+        fprintf(file, " %s", pair.field_name.data);
+        if (pair.field_type->kind == TY_ARRAY) {
+            fprintf(file, "[%d]", (int)pair.field_type->array_type.size);
+        }
+        fprintf(file, ";");
     }
     fprintf(file, "};");
 }
 
 void write_enum_type(struct type *ty, FILE *file) {
+    //TODO: handle arrays
     assert(ty->kind == TY_ENUM);
 
     size_t variant_count = ty->key_type_pairs.size;
@@ -1980,11 +2026,19 @@ void write_function_type(struct type *ty, FILE *file) {
         struct key_type_pair pair = ty->function_type.params.data[i];
         write_type(pair.field_type, file);
         fprintf(file, " %s", pair.field_name.data);
+        if (pair.field_type->kind == TY_ARRAY) {
+            fprintf(file, "[%d]", (int)pair.field_type->array_type.size);
+        }
         if (i < param_count - 1) {
             fprintf(file, ", ");
         }
     }
     fprintf(file, ")");
+}
+
+void write_array_type(struct type *ty, FILE *file) {
+    assert(ty->kind == TY_ARRAY);
+    write_type(ty->array_type.inner_type, file);
 }
 
 void write_type(struct type *ty, FILE *file) {
@@ -2003,6 +2057,9 @@ void write_type(struct type *ty, FILE *file) {
             break;
         case TY_USER_DEFINED:
             write_user_defined_type(ty, file);
+            break;
+        case TY_ARRAY:
+            write_array_type(ty, file);
             break;
         default:
             UNREACHABLE("type kind not handled");
