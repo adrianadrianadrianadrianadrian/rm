@@ -10,7 +10,8 @@ So far this compiles via compiler.sh:
 struct person {
     age: i32,
     height: i32,
-    sibling: ?*person
+    sibling: ?*person,
+    buffer: [u32; 1024]
 }
 
 enum result {
