@@ -29,9 +29,9 @@ fn factorial(input: i32) -> i32 {
 
 fn main() -> i32 {
     something: mut ?*u8 = malloc(100);
-    defer free(something);
+    free(something);
+
     loop_count: mut i32 = 11;
-    defer printf("%d != 11\n", loop_count);
     i: ?i32 = null;
 
     while (loop_count > 0) {

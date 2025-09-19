@@ -149,7 +149,6 @@ enum keyword_type {
     BOOLEAN_FALSE_KEYWORD,
     ELSE_KEYWORD,
     BREAK_KEYWORD,
-    DEFER_KEYWORD,
     MUTABLE_KEYWORD,
     NULL_KEYWORD
 };
@@ -233,11 +232,6 @@ int is_keyword(struct list_char *ident, enum keyword_type *out) {
 
     if (strcmp(ident->data, "else") == 0) {
         *out = ELSE_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "defer") == 0) {
-        *out = DEFER_KEYWORD;
         return 1;
     }
 
@@ -724,10 +718,6 @@ int is_keyword_else(struct token *t) {
 
 int is_keyword_while(struct token *t) {
     return t->token_type == KEYWORD && t->keyword_type == WHILE_KEYWORD;
-}
-
-int is_keyword_defer(struct token *t) {
-    return t->token_type == KEYWORD && t->keyword_type == DEFER_KEYWORD;
 }
 
 int is_keyword_mut(struct token *t) {
@@ -1573,8 +1563,7 @@ enum statement_kind {
     WHILE_LOOP_STATEMENT,
     TYPE_DECLARATION_STATEMENT,
     BREAK_STATEMENT,
-    INCLUDE_STATEMENT,
-    DEFER_STATEMENT
+    INCLUDE_STATEMENT
 };
 
 struct type_declaration_statement {
@@ -1624,21 +1613,6 @@ CREATE_LIST(statement);
 APPEND_LIST(statement);
 
 int parse_statement(struct token_buffer *s, struct statement *out);
-
-int parse_defer_statement(struct token_buffer *s, struct statement *out)
-{
-    struct token tmp = {0};
-    struct expression expr = {0};
-    if (!get_token_where(s, &tmp, is_keyword_defer)) return 0;
-    if (!parse_expression(s, &expr))                 return 0;
-    if (!get_and_expect_token(s, &tmp, SEMICOLON))   return 0;
-    
-    *out = (struct statement) {
-        .kind = DEFER_STATEMENT,
-        .expression = expr
-    };
-    return 1;
-}
 
 int parse_include_statement(struct token_buffer *s, struct statement *out)
 {
@@ -1879,7 +1853,6 @@ int parse_type_declaration(struct token_buffer *s, struct statement *out) {
 int parse_statement(struct token_buffer *s, struct statement *out) {
     return try_parse(s, out, (parser_t)parse_return_statement)
         || try_parse(s, out, (parser_t)parse_break_statement)
-        || try_parse(s, out, (parser_t)parse_defer_statement)
         || try_parse(s, out, (parser_t)parse_binding_statement)
         || try_parse(s, out, (parser_t)parse_if_statement)
         || try_parse(s, out, (parser_t)parse_block_statement_with_semicolon)
@@ -2274,33 +2247,9 @@ CREATE_LIST(int);
 APPEND_LIST(int);
 
 void write_block_statement(struct list_statement *statements, FILE *file) {
-    // TODO: completely hacked in the defer assuming there's only one way out of a block.
-    struct list_int defer_indices = create_list_int(statements->size);
-    int return_index = -1;
     fprintf(file, "{");
     for (size_t i = 0; i < statements->size; i++) {
-        struct statement statement = statements->data[i];
-        if (statement.kind == DEFER_STATEMENT) {
-            append_list_int(&defer_indices, i);
-            continue;
-        }
-        
-        if (statement.kind == RETURN_STATEMENT) {
-            return_index = i;
-            continue;
-        }
-
         write_statement(&statements->data[i], file);
-    }
-
-    for (size_t i = 0; i < defer_indices.size; i++) {
-        size_t defer_index = defer_indices.data[defer_indices.size - i - 1];
-        struct statement defer = statements->data[defer_index];
-        write_statement(&defer, file);
-    }
-    
-    if (return_index != -1) {
-        write_statement(&statements->data[return_index], file);
     }
     fprintf(file, "}");
 }
@@ -2373,9 +2322,6 @@ void write_statement(struct statement *s, FILE *file) {
             break;
         case INCLUDE_STATEMENT:
             write_include_statement(&s->include_statement, file);
-            break;
-        case DEFER_STATEMENT:
-            write_action_statement(&s->expression, file);
             break;
         default:
             UNREACHABLE("statement type not handled");
