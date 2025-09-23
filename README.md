@@ -11,7 +11,7 @@ struct person {
     age: i32,
     height: i32,
     sibling: ?*person,
-    buffer: [u32; 1024]
+    buffer: *[2][1024]u32
 }
 
 enum result {
@@ -28,9 +28,6 @@ fn factorial(input: i32) -> i32 {
 }
 
 fn main() -> i32 {
-    something: mut ?*u8 = malloc(100);
-    free(something);
-
     loop_count: mut i32 = 11;
     i: ?i32 = null;
 

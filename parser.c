@@ -1,5 +1,6 @@
 #include "list.c"
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -112,6 +113,13 @@ void read_until(struct file_buffer *b,
 void copy_list_char(struct list_char *dest, struct list_char *src) {
     for (size_t i = 0; i < src->size && src->data[i] != '\0'; i++) {
         append_list_char(dest, src->data[i]);
+    }
+}
+
+void append_list_char_slice(struct list_char *dest, char *slice) {
+    while (*slice != '\0') {
+        append_list_char(dest, *slice);
+        slice++;
     }
 }
 
@@ -837,13 +845,34 @@ int is_primitive(struct list_char *raw, enum primitive_type *out)
     return 0;
 }
 
+enum type_modifier_kind {
+    POINTER_MODIFIER_KIND,
+    NULLABLE_MODIFIER_KIND,
+    ARRAY_MODIFIER_KIND
+};
+
+struct array_type_modifier {
+    int sized;
+    int size;
+};
+
+typedef struct type_modifier {
+    enum type_modifier_kind kind;
+    union {
+        struct array_type_modifier array_modifier;
+    };
+} type_modifier;
+
+LIST(type_modifier);
+CREATE_LIST(type_modifier);
+APPEND_LIST(type_modifier);
+
 enum type_kind {
     TY_PRIMITIVE = 1,
     TY_STRUCT,
     TY_FUNCTION,
     TY_ENUM,
-    TY_USER_DEFINED,
-    TY_ARRAY
+    TY_USER_DEFINED
 };
 
 typedef struct key_type_pair {
@@ -860,23 +889,15 @@ struct function_type {
     struct type *return_type;
 };
 
-struct array_type {
-    struct type *inner_type;
-    size_t size;
-};
-
 typedef struct type {
     enum type_kind kind;
-    int anonymous;
     struct list_char *name;
-    int nullable;
-    int pointer_count;
+    struct list_type_modifier modifiers;
     union {
         struct function_type function_type;
         enum primitive_type primitive_type;
         struct list_key_type_pair key_type_pairs;
         struct list_char *user_defined;
-        struct array_type array_type;
     };
 } type;
 
@@ -891,12 +912,60 @@ LIST(type);
 CREATE_LIST(type);
 APPEND_LIST(type);
 
+int parse_pointer_type_modifier(struct token_buffer *tb, struct type_modifier *out)
+{
+    struct token tmp = {0};
+    if (!get_token_type(tb, &tmp, STAR)) return 0;
+    *out = (struct type_modifier) {
+        .kind = POINTER_MODIFIER_KIND,
+    };
+
+    return 1;
+}
+
+int parse_nullable_type_modifier(struct token_buffer *tb, struct type_modifier *out)
+{
+    struct token tmp = {0};
+    if (!get_token_type(tb, &tmp, QUESTION_MARK)) return 0;
+    *out = (struct type_modifier) {
+        .kind = NULLABLE_MODIFIER_KIND,
+    };
+
+    return 1;
+}
+
+int parse_array_type_modifier(struct token_buffer *tb, struct type_modifier *out)
+{
+    struct token tmp = {0};
+    int size = 0;
+    int sized = 0;
+    if (!get_token_where(tb, &tmp, is_open_square)) return 0;
+    if (get_token_type(tb, &tmp, NUMERIC)) {
+        sized = 1;
+        size = (int)tmp.numeric; // TODO: numeric token needs improving
+    }
+    if (!get_token_where(tb, &tmp, is_close_square)) return 0;
+    *out = (struct type_modifier) {
+        .kind = ARRAY_MODIFIER_KIND,
+        .array_modifier = (struct array_type_modifier) {
+            .size = size,
+            .sized = sized
+        }
+    };
+
+    return 1;
+}
+
+int parse_type_modifier(struct token_buffer *tb, struct type_modifier *out)
+{
+    return try_parse(tb, out, (parser_t)parse_pointer_type_modifier)
+        || try_parse(tb, out, (parser_t)parse_nullable_type_modifier)
+        || try_parse(tb, out, (parser_t)parse_array_type_modifier);
+}
+
 int parse_type(struct token_buffer *s,
                struct type *out,
-               int named_fn,
-               int named_struct,
-               int named_enum,
-               int named_primitive);
+               int named_fn);
 
 int parse_key_type_pairs(struct token_buffer *s, struct list_key_type_pair *out)
 {
@@ -908,7 +977,7 @@ int parse_key_type_pairs(struct token_buffer *s, struct list_key_type_pair *out)
         if (!get_token_type(s, &tmp, IDENTIFIER))        return 0;
         pair.field_name = *tmp.identifier;
         if (!get_token_type(s, &tmp, COLON))             return 0;
-        if (!parse_type(s, pair.field_type, 0, 1, 1, 0)) return 0;
+        if (!parse_type(s, pair.field_type, 0))          return 0;
         append_list_key_type_pair(out, pair);
         should_continue = get_token_type(s, &tmp, COMMA);
     }
@@ -928,7 +997,7 @@ int parse_function_type(struct token_buffer *s, struct type *out, int named)
     parse_key_type_pairs(s, &params);
     if (!get_and_expect_token_where(s, &tmp, is_close_round)) return 0;
     if (!get_and_expect_token(s, &tmp, RIGHT_ARROW))          return 0;
-    if (!parse_type(s, return_type, 0, 0, 0, 0))              return 0;
+    if (!parse_type(s, return_type, 0))                       return 0;
 
     *out = (struct type) {
         .kind = TY_FUNCTION,
@@ -936,20 +1005,19 @@ int parse_function_type(struct token_buffer *s, struct type *out, int named)
             .params = params,
             .return_type = return_type
         },
-        .anonymous = !named,
         .name = name.identifier
     };
 
     return 1;
 }
 
-int parse_struct_type(struct token_buffer *s, struct type *out, int named)
+int parse_struct_type(struct token_buffer *s, struct type *out)
 {
     struct token name = {0};
     struct token tmp = {0};
     struct list_key_type_pair pairs = create_list_key_type_pair(10);
 
-    if (named && !get_and_expect_token(s, &name, IDENTIFIER)) return 0;
+    if (!get_and_expect_token(s, &name, IDENTIFIER))          return 0;
     if (!get_and_expect_token_where(s, &tmp, is_open_curly))  return 0;
     if (!parse_key_type_pairs(s, &pairs))                     return 0;
     if (!get_and_expect_token_where(s, &tmp, is_close_curly)) return 0;
@@ -957,20 +1025,19 @@ int parse_struct_type(struct token_buffer *s, struct type *out, int named)
     *out = (struct type) {
         .kind = TY_STRUCT,
         .key_type_pairs = pairs,
-        .name = name.identifier,
-        .anonymous = !named
+        .name = name.identifier
     };
 
     return 1;
 }
 
-int parse_enum_type(struct token_buffer *s, struct type *out, int named)
+int parse_enum_type(struct token_buffer *s, struct type *out)
 {
     struct token name = {0};
     struct token tmp = {0};
     struct list_key_type_pair pairs = create_list_key_type_pair(10);
 
-    if (named && !get_and_expect_token(s, &name, IDENTIFIER)) return 0;
+    if (!get_and_expect_token(s, &name, IDENTIFIER))          return 0;
     if (!get_and_expect_token_where(s, &tmp, is_open_curly))  return 0;
     if (!parse_key_type_pairs(s, &pairs))                     return 0;
     if (!get_and_expect_token_where(s, &tmp, is_close_curly)) return 0;
@@ -979,41 +1046,27 @@ int parse_enum_type(struct token_buffer *s, struct type *out, int named)
         .kind = TY_ENUM,
         .key_type_pairs = pairs,
         .name = name.identifier,
-        .anonymous = !named
     };
 
     return 1;
 }
 
-int parse_primitive_type(struct token_buffer *s, struct type *out, int named)
+int parse_primitive_type(struct token_buffer *s, struct type *out)
 {
     struct token tmp = {0};
     enum primitive_type primitive_type;
     struct token name = {0};
 
-    if (named && !get_and_expect_token(s, &name, IDENTIFIER)) return 0;
-    if (named && !get_and_expect_token(s, &tmp, COLON))       return 0;
     if (!get_token_type(s, &tmp, IDENTIFIER))                 return 0;
     if (!is_primitive(tmp.identifier, &primitive_type))       return 0;
 
     *out = (struct type) {
         .kind = TY_PRIMITIVE,
         .primitive_type = primitive_type,
-        .anonymous = !named,
         .name = name.identifier
     };
 
     return 1;
-}
-
-int parse_named_primitive_type(struct token_buffer *s, struct type *out)
-{
-    return parse_primitive_type(s, out, 1);
-}
-
-int parse_unnamed_primitive_type(struct token_buffer *s, struct type *out)
-{
-    return parse_primitive_type(s, out, 0);
 }
 
 int parse_user_defined_type(struct token_buffer *s,
@@ -1029,77 +1082,39 @@ int parse_user_defined_type(struct token_buffer *s,
     return 1;
 }
 
-int parse_array_type(struct token_buffer *s,
-                     struct type *out)
-{
-    struct token tmp = {0};
-    struct type *inner_type = malloc(sizeof(*inner_type));
-    size_t size = 0;
-
-    if (!get_token_where(s, &tmp, is_open_square))  return 0;
-    if (!parse_type(s, inner_type, 0, 0, 0, 0))     return 0;
-    if (!get_token_type(s, &tmp, SEMICOLON))        return 0;
-    if (!get_token_type(s, &tmp, NUMERIC))          return 0;
-    size = tmp.numeric;
-    if (!get_token_where(s, &tmp, is_close_square)) return 0;
-    
-    *out = (struct type) {
-        .kind = TY_ARRAY,
-        .array_type = (struct array_type) {
-            .inner_type = inner_type,
-            .size = size
-        }
-    };
-
-    return 1;
-}
-
 int parse_type(struct token_buffer *s,
                struct type *out,
-               int named_fn,
-               int named_struct,
-               int named_enum,
-               int named_primitive)
+               int named_fn)
 {
     struct token tmp = {0};
-    int nullable = get_token_type(s, &tmp, QUESTION_MARK);
-    int pointer_count = 0;
-    
-    while (get_token_type(s, &tmp, STAR)) {
-        pointer_count += 1;
+    struct list_type_modifier modifiers = create_list_type_modifier(5);
+    struct type_modifier modifier = {0};
+    while (parse_type_modifier(s, &modifier)) {
+        append_list_type_modifier(&modifiers, modifier);
     }
-
-    nullable = get_token_type(s, &tmp, QUESTION_MARK);
 
     if (get_token_type(s, &tmp, KEYWORD)) {
         switch (tmp.keyword_type) {
             case FN_KEYWORD:
                 return parse_function_type(s, out, named_fn);
             case ENUM_KEYWORD:
-                return parse_enum_type(s, out, named_enum);
+                return parse_enum_type(s, out);
             case STRUCT_KEYWORD:
-                return parse_struct_type(s, out, named_struct);
+                return parse_struct_type(s, out);
             default:
                 seek_back_token(s, 1);
                 return 0;
         }
     }
 
-    if (try_parse(s, out, (parser_t)parse_array_type)) {
-        return 1;
-    }
-
-    int success = try_parse(s, out, named_primitive 
-            ? (parser_t)parse_named_primitive_type
-            : (parser_t)parse_unnamed_primitive_type)
+    int result = try_parse(s, out, (parser_t)parse_primitive_type)
         || try_parse(s, out, (parser_t)parse_user_defined_type);
     
-    if (success) {
-        out->nullable = nullable,
-        out->pointer_count = pointer_count;
+    if (result) {
+        out->modifiers = modifiers;
     }
     
-    return success;
+    return result;
 }
 
 enum expression_kind {
@@ -1691,7 +1706,7 @@ int parse_binding_statement(struct token_buffer *s, struct statement *out)
     variable_name = *tmp.identifier;
     if (get_token_type(s, &tmp, COLON)) {
         mutable = get_token_where(s, &tmp, is_keyword_mut);
-        if (!parse_type(s, &type, 0, 0, 0, 0))            return 0;
+        if (!parse_type(s, &type, 0))                     return 0;
         has_type = 1;
     }
     if (!get_and_expect_token_where(s, &tmp, is_math_eq)) return 0;
@@ -1825,7 +1840,8 @@ int parse_while_loop_statement(struct token_buffer *s, struct statement *out)
 
 int parse_type_declaration(struct token_buffer *s, struct statement *out) {
     struct type type = {0};
-    if (!parse_type(s, &type, 1, 1, 1, 1))   return 0;
+    
+    if (!parse_type(s, &type, 1)) return 0;
     if (type.kind != TY_FUNCTION) {
         *out = (struct statement) {
             .kind = TYPE_DECLARATION_STATEMENT,
@@ -1935,29 +1951,75 @@ void write_primitive_type(struct type *ty, FILE *file) {
     }
 }
 
+void append_int(int input, struct list_char *out) {
+    int size = (int)(ceil(log10(input)) + 1);
+    char *str = malloc(size);
+    sprintf(str, "%d", input);
+    for (size_t i = 0; i < size && str[i] != '\0'; i++) {
+        append_list_char(out, str[i]);
+    }
+    free(str);
+}
+
+struct list_char apply_type_modifier(struct type_modifier modifier, struct list_char input)
+{
+    struct list_char output = create_list_char(input.size * 2);
+    switch (modifier.kind) {
+        case POINTER_MODIFIER_KIND:
+        {
+            append_list_char(&output, '(');
+            append_list_char(&output, '*');
+            copy_list_char(&output, &input);
+            append_list_char(&output, ')');
+            break;
+        }
+        case NULLABLE_MODIFIER_KIND:
+        {
+            copy_list_char(&output, &input);
+            break;
+        }
+        case ARRAY_MODIFIER_KIND:
+        {
+            append_list_char(&output, '(');
+            copy_list_char(&output, &input);
+            append_list_char(&output, '[');
+            if (modifier.array_modifier.sized) {
+                append_int(modifier.array_modifier.size, &output);
+            }
+            append_list_char(&output, ']');
+            append_list_char(&output, ')');
+            break;
+        }
+    }
+    append_list_char(&output, '\0');
+    return output;
+}
+
+struct list_char apply_type_modifiers(struct list_type_modifier modifiers, struct list_char input)
+{
+    struct list_char output = input;
+    for (size_t i = 0; i < modifiers.size; i++) {
+        output = apply_type_modifier(modifiers.data[i], output);
+    }
+    return output;
+}
+
 void write_struct_type(struct type *ty, FILE *file) {
     assert(ty->kind == TY_STRUCT);
-    fprintf(file, "struct");
-    if (!ty->anonymous) {
-        fprintf(file, " %s ", ty->name->data);
-    }
+    fprintf(file, "struct %s {", ty->name->data);
 
-    fprintf(file, "{");
     size_t pair_count = ty->key_type_pairs.size;
     for (size_t i = 0; i < pair_count; i++) {
         struct key_type_pair pair = ty->key_type_pairs.data[i];
         write_type(pair.field_type, file);
-        fprintf(file, " %s", pair.field_name.data);
-        if (pair.field_type->kind == TY_ARRAY) {
-            fprintf(file, "[%d]", (int)pair.field_type->array_type.size);
-        }
+        struct list_char modified = apply_type_modifiers(pair.field_type->modifiers, pair.field_name);
+        fprintf(file, " %s", modified.data);
         fprintf(file, ";");
     }
     fprintf(file, "};");
 }
 
 void write_enum_type(struct type *ty, FILE *file) {
-    //TODO: handle arrays
     assert(ty->kind == TY_ENUM);
 
     size_t variant_count = ty->key_type_pairs.size;
@@ -1976,9 +2038,41 @@ void write_enum_type(struct type *ty, FILE *file) {
     for (size_t i = 0; i < variant_count; i++) {
         struct key_type_pair pair = ty->key_type_pairs.data[i];
         write_type(pair.field_type, file);
-        fprintf(file, " %s_type_%s;", ty->name->data, pair.field_name.data);
+        struct list_char union_name = create_list_char(pair.field_name.size * 2);
+        for (size_t j = 0; j < ty->name->size; j++) {
+            char to_add = ty->name->data[j];
+            if (to_add != '\0') {
+                append_list_char(&union_name, ty->name->data[j]);
+            }
+        } 
+        append_list_char_slice(&union_name, "_type_");
+        for (size_t j = 0; j < pair.field_name.size; j++) {
+            append_list_char(&union_name, pair.field_name.data[j]);
+        } 
+        struct list_char modified = apply_type_modifiers(pair.field_type->modifiers, union_name);
+        fprintf(file, " %s;", modified.data);
     }
     fprintf(file, "};};");
+    
+    // TODO: current idea is to generate constructor functions per enum variant
+    // 
+    // struct person { int age; };
+    // enum result_kind {
+    //     result_kind_ok,
+    //     result_kind_error
+    // };
+    // struct result_type {
+    //     enum result_kind result_kind;
+    //     union {
+    //      struct person result_type_ok;
+    //      char result_type_error;
+    //     };
+    // };
+    //
+    // would produce the following:
+    // struct result_type result_type_ok(struct person p);
+    // struct result_type result_type_error(char err);
+    // Then when we write the binding expressions for enums we can map to these functions
 }
 
 void write_user_defined_type(struct type *ty, FILE *file) {
@@ -1989,29 +2083,18 @@ void write_user_defined_type(struct type *ty, FILE *file) {
 void write_function_type(struct type *ty, FILE *file) {
     assert(ty->kind == TY_FUNCTION);
     write_type(ty->function_type.return_type, file);
-    if (!ty->anonymous) {
-        fprintf(file, " %s", ty->name->data);
-    }
+    fprintf(file, " %s(", ty->name->data);
 
-    fprintf(file, "(");
     size_t param_count = ty->function_type.params.size;
     for (size_t i = 0; i < param_count; i++) {
         struct key_type_pair pair = ty->function_type.params.data[i];
         write_type(pair.field_type, file);
         fprintf(file, " %s", pair.field_name.data);
-        if (pair.field_type->kind == TY_ARRAY) {
-            fprintf(file, "[%d]", (int)pair.field_type->array_type.size);
-        }
         if (i < param_count - 1) {
             fprintf(file, ", ");
         }
     }
     fprintf(file, ")");
-}
-
-void write_array_type(struct type *ty, FILE *file) {
-    assert(ty->kind == TY_ARRAY);
-    write_type(ty->array_type.inner_type, file);
 }
 
 void write_type(struct type *ty, FILE *file) {
@@ -2031,15 +2114,8 @@ void write_type(struct type *ty, FILE *file) {
         case TY_USER_DEFINED:
             write_user_defined_type(ty, file);
             break;
-        case TY_ARRAY:
-            write_array_type(ty, file);
-            break;
         default:
             UNREACHABLE("type kind not handled");
-    }
-
-    for (int i = 0; i < ty->pointer_count; i++) {
-        fprintf(file, "*");
     }
 }
 
