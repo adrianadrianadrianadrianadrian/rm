@@ -10,13 +10,17 @@ So far this compiles via compiler.sh:
 struct person {
     age: i32,
     height: i32,
-    sibling: ?*person,
+    sibling: ?*struct person,
     buffer: *[2][1024]u32
 }
 
 enum result {
-    ok: person,
+    ok: struct person,
     error: i32
+}
+
+struct api_client {
+    port: i16
 }
 
 fn factorial(input: i32) -> i32 {
@@ -30,6 +34,7 @@ fn factorial(input: i32) -> i32 {
 fn main() -> i32 {
     loop_count: mut i32 = 11;
     i: ?i32 = null;
+    client = struct api_client { port = 8080 };
 
     while (loop_count > 0) {
         printf("Hello world! %d\n", factorial(loop_count));
@@ -39,7 +44,7 @@ fn main() -> i32 {
     return 0;
 }
 
-fn person_age(p: person) -> i32 {
+fn person_age(p: struct person) -> i32 {
     return p.age;
 }
 ```
