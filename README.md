@@ -63,7 +63,8 @@ enum result {
 
 fn test(res: enum result) -> void {
     switch (res) {
-        case { ok: p@{ age: 21 }}: {
+        case { ok: p@{ age: 21 }}:
+        {
             printf("Height of 21 year old is %d\n", p.height);
             break;
         }
