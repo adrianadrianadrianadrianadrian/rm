@@ -48,3 +48,31 @@ fn person_age(p: struct person) -> i32 {
     return p.age;
 }
 ```
+
+switch statement current idea, I'd like full pattern matching here.
+```
+struct person {
+    age: u32,
+    height: u32
+}
+
+enum result {
+    ok: struct person,
+    error: i32
+}
+
+fn test(res: enum result) -> void {
+    switch (res) {
+        case { ok: p@{ age: 21 }}: {
+            printf("Height of 21 year old is %d\n", p.height);
+            break;
+        }
+        case { error: err }:
+        {
+            printf("Error!!!! %d\n", err);
+            break;
+        }
+    }
+}
+```
+

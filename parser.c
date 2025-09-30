@@ -19,13 +19,8 @@ typedef struct positional_char {
     int col;
 } positional_char;
 
-LIST(positional_char);
-CREATE_LIST(positional_char);
-APPEND_LIST(positional_char);
-
-LIST(char);
-CREATE_LIST(char);
-APPEND_LIST(char);
+struct_list(positional_char);
+struct_list(char);
 
 struct file_buffer {
     struct positional_char *data;
@@ -36,7 +31,7 @@ struct file_buffer {
 struct file_buffer create_file_buffer(FILE *fstream) {
     #define tmp_buf_size 1024
     static char buffer[tmp_buf_size];
-    struct list_positional_char chars = create_list_positional_char(tmp_buf_size);
+    struct list_positional_char chars = list_create(positional_char, tmp_buf_size);
 
     int row = 1;
     int col = 1;
@@ -45,11 +40,13 @@ struct file_buffer create_file_buffer(FILE *fstream) {
     while ((read_amount = fread(&buffer, sizeof(char), tmp_buf_size, fstream)) > 0)
     {
         for (size_t i = 0; i < read_amount; i++) {
-            append_list_positional_char(&chars, (struct positional_char) {
+            struct positional_char pc = (struct positional_char) {
                 .value = buffer[i],
                 .row = row,
                 .col = col
-            });
+            };
+
+            list_append(&chars, pc);
 
             if (buffer[i] == '\n') {
                 row += 1;
@@ -106,21 +103,35 @@ void read_until(struct file_buffer *b,
             return;
         }
 
-        append_list_char(out, test.value);
+        list_append(out, test.value);
     }
 }
 
 void copy_list_char(struct list_char *dest, struct list_char *src) {
     for (size_t i = 0; i < src->size && src->data[i] != '\0'; i++) {
-        append_list_char(dest, src->data[i]);
+        list_append(dest, src->data[i]);
     }
 }
 
 void append_list_char_slice(struct list_char *dest, char *slice) {
     while (*slice != '\0') {
-        append_list_char(dest, *slice);
+        list_append(dest, *slice);
         slice++;
     }
+}
+
+int list_char_eq(struct list_char *l, struct list_char *r) {
+	if (l->size != r->size) {
+		return 0;
+	}
+	
+	for (size_t i = 0; i < l->size; i++) {
+		if (l->data[i] != r->data[i]) {
+			return 0;
+		}
+	}
+
+	return 1;
 }
 
 // tokenisation
@@ -158,7 +169,9 @@ enum keyword_type {
     ELSE_KEYWORD,
     BREAK_KEYWORD,
     MUTABLE_KEYWORD,
-    NULL_KEYWORD
+    NULL_KEYWORD,
+    SWITCH_KEYWORD,
+    CASE_KEYWORD
 };
 
 enum paren_type {
@@ -188,9 +201,7 @@ typedef struct token {
     int position;
 } token;
 
-LIST(token);
-CREATE_LIST(token);
-APPEND_LIST(token);
+struct_list(token);
 
 int is_keyword(struct list_char *ident, enum keyword_type *out) {
     if (strcmp(ident->data, "fn") == 0) {
@@ -250,6 +261,16 @@ int is_keyword(struct list_char *ident, enum keyword_type *out) {
 
     if (strcmp(ident->data, "null") == 0) {
         *out = NULL_KEYWORD;
+        return 1;
+    }
+
+    if (strcmp(ident->data, "switch") == 0) {
+        *out = SWITCH_KEYWORD;
+        return 1;
+    }
+
+    if (strcmp(ident->data, "case") == 0) {
+        *out = CASE_KEYWORD;
         return 1;
     }
 
@@ -473,9 +494,9 @@ int next_token(struct file_buffer *b, struct token *out) {
             case '\'': {
                 int char_start_position = b->current_position;
                 struct list_char *c = malloc(sizeof(*c));
-                *c = create_list_char(2);
+                *c = list_create(char, 2);
                 if (!read_file_buffer(b, 1, &test)) return 0;
-                append_list_char(c, test.value);
+                list_append(c, test.value);
                 if (!read_file_buffer(b, 1, &test)) return 0;
                 if (test.value != '\'')             return 0;
                 
@@ -489,7 +510,7 @@ int next_token(struct file_buffer *b, struct token *out) {
             case '"': {
                 int str_start_position = b->current_position;
                 struct list_char *str = malloc(sizeof(*str));
-                *str = create_list_char(50);
+                *str = list_create(char, 50);
                 read_until(b, str, is_double_quote, 1);
                 
                 *out = (struct token) {
@@ -535,10 +556,10 @@ int next_token(struct file_buffer *b, struct token *out) {
 
                 int start_position = b->current_position;
                 struct list_char *ident = malloc(sizeof(*ident));
-                *ident = create_list_char(10);
-                append_list_char(ident, test.value);
+                *ident = list_create(char, 10);
+                list_append(ident, test.value);
                 read_until(b, ident, is_special_or_whitespace, 0);
-                append_list_char(ident, '\0');
+                list_append(ident, '\0');
 
                 enum keyword_type keyword;
                 if (is_keyword(ident, &keyword)) {
@@ -581,11 +602,11 @@ struct token_buffer {
 };
 
 struct token_buffer create_token_buffer(struct file_buffer *b) {
-    struct list_token tokens = create_list_token(b->size);
+    struct list_token tokens = list_create(token, b->size);
     struct token tok;
 
     while (next_token(b, &tok)) {
-        append_list_token(&tokens, tok);
+        list_append(&tokens, tok);
     }
 
     return (struct token_buffer) {
@@ -744,6 +765,14 @@ int is_keyword_null(struct token *t) {
     return t->token_type == KEYWORD && t->keyword_type == NULL_KEYWORD;
 }
 
+int is_keyword_switch(struct token *t) {
+    return t->token_type == KEYWORD && t->keyword_type == SWITCH_KEYWORD;
+}
+
+int is_keyword_case(struct token *t) {
+    return t->token_type == KEYWORD && t->keyword_type == CASE_KEYWORD;
+}
+
 // parsing
 #define parser_t int (*)(struct token_buffer *, void *)
 int try_parse(struct token_buffer *s,
@@ -864,9 +893,7 @@ typedef struct type_modifier {
     };
 } type_modifier;
 
-LIST(type_modifier);
-CREATE_LIST(type_modifier);
-APPEND_LIST(type_modifier);
+struct_list(type_modifier);
 
 enum type_kind {
     TY_PRIMITIVE = 1,
@@ -880,9 +907,7 @@ typedef struct key_type_pair {
     struct type *field_type;
 } key_type_pair;
 
-LIST(key_type_pair);
-CREATE_LIST(key_type_pair);
-APPEND_LIST(key_type_pair);
+struct_list(key_type_pair);
 
 struct function_type {
     struct list_key_type_pair params;
@@ -913,14 +938,12 @@ typedef struct type {
 
 struct key_type_pair create_key_type_pair() {
     return (struct key_type_pair) {
-        .field_name = create_list_char(10),
+        .field_name = list_create(char, 10),
         .field_type = malloc(sizeof(struct type))
     };
 }
 
-LIST(type);
-CREATE_LIST(type);
-APPEND_LIST(type);
+struct_list(type);
 
 int parse_pointer_type_modifier(struct token_buffer *tb, struct type_modifier *out)
 {
@@ -987,10 +1010,10 @@ int parse_type_modifier(struct token_buffer *tb, struct type_modifier *out)
 
 struct list_type_modifier parse_modifiers(struct token_buffer *tb)
 {
-    struct list_type_modifier modifiers = create_list_type_modifier(5);
+    struct list_type_modifier modifiers = list_create(type_modifier, 5);
     struct type_modifier modifier = {0};
     while (parse_type_modifier(tb, &modifier)) {
-        append_list_type_modifier(&modifiers, modifier);
+        list_append(&modifiers, modifier);
     }
     return modifiers;
 }
@@ -1012,7 +1035,7 @@ int parse_key_type_pairs(struct token_buffer *s,
         pair.field_name = *tmp.identifier;
         if (!get_token_type(s, &tmp, COLON))       return 0;
         if (!parse_type(s, pair.field_type, 0, 1)) return 0;
-        append_list_key_type_pair(out, pair);
+        list_append(out, pair);
         should_continue = get_token_type(s, &tmp, COMMA);
     }
 
@@ -1023,7 +1046,7 @@ int parse_function_type(struct token_buffer *s, struct type *out, int named)
 {
     struct token tmp;
     struct token name;
-    struct list_key_type_pair params = create_list_key_type_pair(10);
+    struct list_key_type_pair params = list_create(key_type_pair, 10);
     struct type *return_type = malloc(sizeof(*return_type));
 
     if (named && !get_and_expect_token(s, &name, IDENTIFIER)) return 0;
@@ -1050,7 +1073,7 @@ int parse_struct_type(struct token_buffer *s, struct type *out, int predefined_t
 {
     struct token name = {0};
     struct token tmp = {0};
-    struct list_key_type_pair pairs = create_list_key_type_pair(10);
+    struct list_key_type_pair pairs = list_create(key_type_pair, 10);
 
     if (!get_and_expect_token(s, &name, IDENTIFIER))              return 0;
     if (!predefined_type && get_token_where(s, &tmp, is_open_curly)) {
@@ -1075,7 +1098,7 @@ int parse_enum_type(struct token_buffer *s, struct type *out, int predefined_typ
 {
     struct token name = {0};
     struct token tmp = {0};
-    struct list_key_type_pair pairs = create_list_key_type_pair(10);
+    struct list_key_type_pair pairs = list_create(key_type_pair, 10);
 
     if (!get_and_expect_token(s, &name, IDENTIFIER))              return 0;
     if (!predefined_type && get_token_where(s, &tmp, is_open_curly)) {
@@ -1165,9 +1188,7 @@ typedef struct key_expression {
     struct expression *expression;
 } key_expression;
 
-LIST(key_expression);
-CREATE_LIST(key_expression);
-APPEND_LIST(key_expression);
+struct_list(key_expression);
     
 struct literal_struct_enum {
     struct list_char *name;
@@ -1233,9 +1254,7 @@ typedef struct expression {
     };
 } expression;
 
-LIST(expression);
-CREATE_LIST(expression);
-APPEND_LIST(expression);
+struct_list(expression);
 
 int parse_expression(struct token_buffer *s, struct expression *out);
 
@@ -1343,7 +1362,7 @@ int parse_struct_enum_literal_expression(struct token_buffer *s,
     if (!get_token_type(s, &name, IDENTIFIER))    return 0;
     if (!get_token_where(s, &tmp, is_open_curly)) return 0;
 
-    struct list_key_expression pairs = create_list_key_expression(10);
+    struct list_key_expression pairs = list_create(key_expression, 10);
     int should_continue = 1;
     while (should_continue) {
         struct key_expression pair = {0};
@@ -1353,7 +1372,7 @@ int parse_struct_enum_literal_expression(struct token_buffer *s,
         struct expression *e = malloc(sizeof(*e));
         if (!parse_expression(s, e))               return 0;
         pair.expression = e;
-        append_list_key_expression(&pairs, pair);
+        list_append(&pairs, pair);
         should_continue = get_token_type(s, &tmp, COMMA);
     }
     
@@ -1489,13 +1508,13 @@ int parse_function_expression(struct token_buffer *s, struct function_expression
     if (!get_token_where(s, &tmp, is_open_round)) return 0;
 
     struct list_expression *params = malloc(sizeof(*params));
-    *params = create_list_expression(10);
+    *params = list_create(expression, 10);
     int should_continue = 1;
 
     while (should_continue) {
         struct expression expr = {0};
         if (parse_expression(s, &expr)) {
-            append_list_expression(params, expr);
+            list_append(params, expr);
         }
         should_continue = get_token_type(s, &tmp, COMMA);
     }
@@ -1601,7 +1620,59 @@ enum statement_kind {
     WHILE_LOOP_STATEMENT,
     TYPE_DECLARATION_STATEMENT,
     BREAK_STATEMENT,
-    INCLUDE_STATEMENT
+    INCLUDE_STATEMENT,
+	SWITCH_STATEMENT
+};
+
+enum switch_pattern_kind {
+    OBJECT_PATTERN_KIND,
+    ARRAY_PATTERN_KIND,
+    NUMBER_PATTERN_KIND,
+    STRING_PATTERN_KIND
+};
+    
+struct key_pattern_pair {
+    struct list_char key;
+    struct switch_pattern *pattern;
+};
+
+struct object_pattern {
+    struct key_pattern_pair *pairs;
+    size_t len;
+};
+
+struct array_pattern {
+    struct switch_pattern *patterns;
+    size_t len;
+};
+
+struct number_pattern {
+    double number;
+};
+
+struct string_pattern {
+    struct list_char str;
+};
+
+struct switch_pattern {
+    enum switch_pattern_kind switch_pattern_kind;
+    union {
+        struct object_pattern object_pattern;
+        struct array_pattern array_pattern;
+        struct number_pattern number_pattern;
+        struct string_pattern string_pattern;
+    };
+};
+
+typedef struct case_statement {
+	struct switch_pattern pattern;
+} case_statement;
+
+struct_list(case_statement);
+
+struct switch_statement {
+	struct expression switch_expression;
+	struct list_case_statement cases;
 };
 
 struct type_declaration_statement {
@@ -1645,9 +1716,7 @@ typedef struct statement {
     };
 } statement;
 
-LIST(statement);
-CREATE_LIST(statement);
-APPEND_LIST(statement);
+struct_list(statement);
 
 int parse_statement(struct token_buffer *s, struct statement *out);
 
@@ -1655,7 +1724,7 @@ int parse_include_statement(struct token_buffer *s, struct statement *out)
 {
     int external = 0;
     struct token tmp = {0};
-    struct list_char raw_include = create_list_char(10);
+    struct list_char raw_include = list_create(char, 10);
 
     if (!get_token_type(s, &tmp, HASH))            return 0;
     if (!get_token_type(s, &tmp, IDENTIFIER))      return 0;
@@ -1666,7 +1735,7 @@ int parse_include_statement(struct token_buffer *s, struct statement *out)
         copy_list_char(&raw_include, tmp.identifier);
         if (!get_token_type(s, &tmp, DOT))         return 0;
         if (!get_token_type(s, &tmp, IDENTIFIER))  return 0;
-        append_list_char(&raw_include, '.');
+        list_append(&raw_include, '.');
         copy_list_char(&raw_include, tmp.identifier);
         if (!get_token_type(s, &tmp, RIGHT_ARROW)) return 0;
     } else if (get_token_type(s, &tmp, STR_LITERAL)) {
@@ -1754,12 +1823,12 @@ int parse_block_statement(struct token_buffer *s,
     if (!get_token_where(s, &tmp, is_open_curly)) return 0;
 
     struct list_statement *statements = malloc(sizeof(*statements));
-    *statements = create_list_statement(10);
+    *statements = list_create(statement, 10);
 
     for (;;) {
         struct statement statement = {0};
         if (parse_statement(s, &statement)) {
-            append_list_statement(statements, statement);
+            list_append(statements, statement);
         } else {
             return 0;
         }
@@ -1902,12 +1971,12 @@ struct rm_file {
 };
 
 int parse_rm_file(struct token_buffer *s, struct rm_file *out) {
-    struct list_statement statements = create_list_statement(10);
+    struct list_statement statements = list_create(statement, 10);
 
     for (;;) {
         struct statement statement = {0};
         if (parse_statement(s, &statement)) {
-            append_list_statement(&statements, statement);
+            list_append(&statements, statement);
         } else {
             break;
         }
@@ -1921,6 +1990,16 @@ int parse_rm_file(struct token_buffer *s, struct rm_file *out) {
 }
 
 // C generation
+struct statement_slice {
+	struct statement *statements;
+	size_t len;
+};
+
+struct c_scope {
+	struct statement_slice preceding_statements;
+	struct c_scope *parent;
+};
+
 void write_type(struct type *ty, FILE *file);
 
 void write_primitive_type(struct type *ty, FILE *file) {
@@ -1975,21 +2054,21 @@ void append_int(int input, struct list_char *out) {
     char *str = malloc(size);
     sprintf(str, "%d", input);
     for (size_t i = 0; i < size && str[i] != '\0'; i++) {
-        append_list_char(out, str[i]);
+        list_append(out, str[i]);
     }
     free(str);
 }
 
 struct list_char apply_type_modifier(struct type_modifier modifier, struct list_char input)
 {
-    struct list_char output = create_list_char(input.size * 2);
+    struct list_char output = list_create(char, input.size * 2);
     switch (modifier.kind) {
         case POINTER_MODIFIER_KIND:
         {
-            append_list_char(&output, '(');
-            append_list_char(&output, '*');
+            list_append(&output, '(');
+            list_append(&output, '*');
             copy_list_char(&output, &input);
-            append_list_char(&output, ')');
+            list_append(&output, ')');
             break;
         }
         case NULLABLE_MODIFIER_KIND:
@@ -1999,21 +2078,21 @@ struct list_char apply_type_modifier(struct type_modifier modifier, struct list_
         }
         case ARRAY_MODIFIER_KIND:
         {
-            append_list_char(&output, '(');
+            list_append(&output, '(');
             copy_list_char(&output, &input);
-            append_list_char(&output, '[');
+            list_append(&output, '[');
             if (modifier.array_modifier.sized) {
                 append_int(modifier.array_modifier.size, &output);
             }
-            append_list_char(&output, ']');
-            append_list_char(&output, ')');
+            list_append(&output, ']');
+            list_append(&output, ')');
             break;
         }
         case MUTABLE_MODIFIER_KIND:
             // TODO: this makes it tricky. Revisit.
             break;
         }
-    append_list_char(&output, '\0');
+    list_append(&output, '\0');
     return output;
 }
 
@@ -2068,16 +2147,16 @@ void write_enum_type(struct type *ty, FILE *file) {
     for (size_t i = 0; i < variant_count; i++) {
         struct key_type_pair pair = ty->enum_type.pairs.data[i];
         write_type(pair.field_type, file);
-        struct list_char union_name = create_list_char(pair.field_name.size * 2);
+        struct list_char union_name = list_create(char, pair.field_name.size * 2);
         for (size_t j = 0; j < ty->name->size; j++) {
             char to_add = ty->name->data[j];
             if (to_add != '\0') {
-                append_list_char(&union_name, ty->name->data[j]);
+                list_append(&union_name, ty->name->data[j]);
             }
         } 
         append_list_char_slice(&union_name, "_type_");
         for (size_t j = 0; j < pair.field_name.size; j++) {
-            append_list_char(&union_name, pair.field_name.data[j]);
+            list_append(&union_name, pair.field_name.data[j]);
         } 
         struct list_char modified = apply_type_modifiers(pair.field_type->modifiers, union_name);
         fprintf(file, " %s;", modified.data);
@@ -2305,7 +2384,26 @@ void write_expression(struct expression *e, FILE *file) {
     }
 }
 
-int infer_type(struct expression *e, struct type *out) {
+int get_scoped_variable_type(struct c_scope *scope,
+					         struct list_char variable_name,
+							 struct type *out)
+{
+	for (size_t i = 0; i < scope->preceding_statements.len; i++) {
+		struct statement s = scope->preceding_statements.statements[i];
+		if (s.kind == BINDING_STATEMENT) {
+			if (list_char_eq(&s.binding_statement.variable_name, &variable_name)
+				&& s.binding_statement.has_type)
+			{
+				*out = s.binding_statement.variable_type;
+				return 1;
+			}
+		}
+	}
+
+	return 1;
+}
+
+int infer_type(struct expression *e, struct c_scope *scope, struct type *out) {
     switch (e->kind) {
         case LITERAL_EXPRESSION:
         {
@@ -2350,13 +2448,17 @@ int infer_type(struct expression *e, struct type *out) {
                 }
                 case LITERAL_STR:
                 case LITERAL_NUMERIC:
-                case LITERAL_NAME:
                 case LITERAL_HOLE:
                 case LITERAL_NULL:
-                    break;
+                    return 0;
+                case LITERAL_NAME:
+					return get_scoped_variable_type(scope, *e->literal.name, out);
             }
         }
         case UNARY_EXPRESSION:
+		{
+			return infer_type(e->unary.expression, scope, out);
+		}
         case BINARY_EXPRESSION:
         case GROUP_EXPRESSION:
         case FUNCTION_EXPRESSION:
@@ -2364,22 +2466,38 @@ int infer_type(struct expression *e, struct type *out) {
     }
 }
 
-void write_statement(struct statement *s, FILE *file);
+void write_statement(struct statement *s, struct c_scope *scope, FILE *file);
 
 void write_type_default(struct type *type, FILE *file) {
     // TODO: derive default C values 
     fprintf(file, "0");
 }
 
-void write_binding_statement(struct binding_statement *s, FILE *file) {
-    if (*&s->has_type) {
-        write_type(&s->variable_type, file);
-    } else {
-        struct type inferred = {0};
-        if (infer_type(&s->value, &inferred)) {
-            write_type(&inferred, file);
-        }
-    }
+int variable_is_defined(struct c_scope *scope, struct list_char variable_name)
+{
+	for (size_t i = 0; i < scope->preceding_statements.len; i++) {
+		struct statement s = scope->preceding_statements.statements[i];
+		if (s.kind == BINDING_STATEMENT) {
+			if (list_char_eq(&s.binding_statement.variable_name, &variable_name)) {
+				return 1;
+			}
+		}
+	}
+
+	return 0;
+}
+
+void write_binding_statement(struct binding_statement *s, struct c_scope *scope, FILE *file) {
+	if (!variable_is_defined(scope, s->variable_name)) {
+		if (*&s->has_type) {
+			write_type(&s->variable_type, file);
+		} else {
+			struct type inferred = {0};
+			if (infer_type(&s->value, scope, &inferred)) {
+				write_type(&inferred, file);
+			}
+		}
+	}
 
     fprintf(file, " %s = ", s->variable_name.data);
     if (s->value.kind == LITERAL_EXPRESSION
@@ -2392,60 +2510,66 @@ void write_binding_statement(struct binding_statement *s, FILE *file) {
     fprintf(file, ";");
 }
 
-void write_if_statement(struct if_statement *s, FILE *file) {
+void write_if_statement(struct if_statement *s, struct c_scope *scope, FILE *file) {
     fprintf(file, "if (");
     write_expression(&s->condition, file);
     fprintf(file, ")");
-    write_statement(s->success_statement, file);
+    write_statement(s->success_statement, scope, file);
     if (s->else_statement != NULL) {
         fprintf(file, " else ");
-        write_statement(s->else_statement, file);
+        write_statement(s->else_statement, scope, file);
     }
 }
 
-void write_return_statement(struct expression *e, FILE *file) {
+void write_return_statement(struct expression *e, struct c_scope *scope, FILE *file) {
     fprintf(file, "return ");
     write_expression(e, file);
     fprintf(file, ";");
 }
 
-LIST(int);
-CREATE_LIST(int);
-APPEND_LIST(int);
+struct_list(int);
 
-void write_block_statement(struct list_statement *statements, FILE *file) {
+void write_block_statement(struct list_statement *statements, struct c_scope *scope, FILE *file) {
     fprintf(file, "{");
     for (size_t i = 0; i < statements->size; i++) {
-        write_statement(&statements->data[i], file);
+		struct c_scope inner_scope = (struct c_scope) {
+			.preceding_statements = (struct statement_slice) {
+				.statements = statements->data,
+				.len = i
+			},
+			.parent = scope
+		};
+        write_statement(&statements->data[i], &inner_scope, file);
     }
     fprintf(file, "}");
 }
 
-void write_action_statement(struct expression *e, FILE *file) {
+void write_action_statement(struct expression *e, struct c_scope *scope, FILE *file) {
     write_expression(e, file);
     fprintf(file, ";");
 }
 
-void write_while_statement(struct while_loop_statement *s, FILE *file) {
+void write_while_statement(struct while_loop_statement *s, struct c_scope *scope, FILE *file) {
     fprintf(file, "while (");
     write_expression(&s->condition, file);
     fprintf(file, ")");
-    write_statement(s->do_statement, file);
+    write_statement(s->do_statement, scope, file);
 }
 
-void write_type_declaration_statement(struct type_declaration_statement *s, FILE *file) {
+void write_type_declaration_statement(struct type_declaration_statement *s, struct c_scope *scope, FILE *file) {
     write_type(&s->type, file);
-    if (s->statements != NULL)
+    if (s->type.kind == TY_FUNCTION)
     {
-        write_block_statement(s->statements, file);
+		assert(s->statements != NULL);
+        write_block_statement(s->statements, scope, file);
     }
 }
 
-void write_break_statement(FILE *file) {
+void write_break_statement(struct c_scope *scope, FILE *file) {
     fprintf(file, "break;");
 }
 
-void write_include_statement(struct include_statement *s, FILE *file) {
+void write_include_statement(struct include_statement *s, struct c_scope *scope, FILE *file) {
     fprintf(file, "#include");
     if (s->external) {
         fprintf(file, " <");
@@ -2461,34 +2585,34 @@ void write_include_statement(struct include_statement *s, FILE *file) {
     fprintf(file, "\n");
 }
 
-void write_statement(struct statement *s, FILE *file) {
+void write_statement(struct statement *s, struct c_scope *scope, FILE *file) {
     switch (s->kind) {
         case BINDING_STATEMENT:
-            write_binding_statement(&s->binding_statement, file);
+            write_binding_statement(&s->binding_statement, scope, file);
             break;
         case IF_STATEMENT:
-            write_if_statement(&s->if_statement, file);
+            write_if_statement(&s->if_statement, scope, file);
             break;
         case RETURN_STATEMENT:
-            write_return_statement(&s->expression, file);
+            write_return_statement(&s->expression, scope, file);
             break;
         case BLOCK_STATEMENT:
-            write_block_statement(s->statements, file);
+            write_block_statement(s->statements, scope, file);
             break;
         case ACTION_STATEMENT:
-            write_action_statement(&s->expression, file);
+            write_action_statement(&s->expression, scope, file);
             break;
         case WHILE_LOOP_STATEMENT:
-            write_while_statement(&s->while_loop_statement, file);
+            write_while_statement(&s->while_loop_statement, scope, file);
             break;
         case TYPE_DECLARATION_STATEMENT:
-            write_type_declaration_statement(&s->type_declaration, file);
+            write_type_declaration_statement(&s->type_declaration, scope, file);
             break;
         case BREAK_STATEMENT:
-            write_break_statement(file);
+            write_break_statement(scope, file);
             break;
         case INCLUDE_STATEMENT:
-            write_include_statement(&s->include_statement, file);
+            write_include_statement(&s->include_statement, scope, file);
             break;
         default:
             UNREACHABLE("statement type not handled");
@@ -2505,22 +2629,44 @@ static void generate_c_file(struct rm_file file, struct generated_c_state *state
     fprintf(program, "#include \"c_output.h\"\n");
     for (size_t i = 0; i < file.statements.size; i++) {
         struct statement s = file.statements.data[i];
+		struct c_scope scope = {0};
 
-        if (s.kind == TYPE_DECLARATION_STATEMENT
-            && (s.type_declaration.type.kind == TY_ENUM
-                || s.type_declaration.type.kind == TY_STRUCT))
-        {
-            append_list_type(state->data_types, s.type_declaration.type);
-            continue;
-        }
-
-        if (s.kind == TYPE_DECLARATION_STATEMENT
-            && s.type_declaration.type.kind == TY_FUNCTION)
-        {
-            append_list_type(state->fn_types, s.type_declaration.type);
-        }
-
-        write_statement(&file.statements.data[i], program);
+		switch (s.kind) {
+			case INCLUDE_STATEMENT:
+        		write_statement(&file.statements.data[i], &scope, program);
+				break;
+			case TYPE_DECLARATION_STATEMENT:
+			{
+				switch (s.type_declaration.type.kind) {
+					case TY_ENUM:
+					case TY_STRUCT:
+						list_append(state->data_types, s.type_declaration.type);
+						break;
+					case TY_FUNCTION:
+						list_append(state->fn_types, s.type_declaration.type);
+        				write_statement(&file.statements.data[i], &scope, program);
+						break;
+					case TY_PRIMITIVE:
+					{
+						fprintf(stderr, "woopssss");
+						exit(-1);
+					}
+				}
+				break;
+			}
+			case BINDING_STATEMENT:
+			case IF_STATEMENT:
+			case RETURN_STATEMENT:
+			case BLOCK_STATEMENT:
+			case ACTION_STATEMENT:
+			case WHILE_LOOP_STATEMENT:
+            case SWITCH_STATEMENT:
+			case BREAK_STATEMENT:
+			{
+				fprintf(stderr, "woops");
+				exit(-1);
+			}
+        } 
     }
 }
 
@@ -2541,8 +2687,8 @@ void generate_c_header(struct generated_c_state *state) {
 }
 
 void generate_c(struct rm_file file) {
-    struct list_type data_types = create_list_type(100);
-    struct list_type fn_types = create_list_type(100);
+    struct list_type data_types = list_create(type, 100);
+    struct list_type fn_types = list_create(type, 100);
     struct generated_c_state state = {
         .data_types = &data_types,
         .fn_types = &fn_types
