@@ -35,6 +35,9 @@ fn main() -> i32 {
     loop_count: mut i32 = 11;
     i: ?i32 = null;
     client = struct api_client { port = 8080 };
+    
+    running: bool = false;
+    not_running = !running;
 
     while (loop_count > 0) {
         printf("Hello world! %d\n", factorial(loop_count));
