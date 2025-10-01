@@ -875,7 +875,7 @@ int is_primitive(struct list_char *raw, enum primitive_type *out)
 }
 
 enum type_modifier_kind {
-    POINTER_MODIFIER_KIND,
+    POINTER_MODIFIER_KIND = 1,
     NULLABLE_MODIFIER_KIND,
     ARRAY_MODIFIER_KIND,
     MUTABLE_MODIFIER_KIND
@@ -1997,6 +1997,7 @@ struct statement_slice {
 
 struct c_scope {
 	struct statement_slice preceding_statements;
+    struct list_key_type_pair scoped_variables;
 	struct c_scope *parent;
 };
 
@@ -2227,9 +2228,9 @@ void write_type(struct type *ty, FILE *file) {
     }
 }
 
-void write_expression(struct expression *e, FILE *file);
+void write_expression(struct expression *e, struct c_scope *scope, FILE *file);
 
-void write_literal_expression(struct literal_expression *e, FILE *file) {
+void write_literal_expression(struct literal_expression *e, struct c_scope *scope, FILE *file) {
     switch (e->kind) {
         case LITERAL_BOOLEAN:
         {
@@ -2266,7 +2267,7 @@ void write_literal_expression(struct literal_expression *e, FILE *file) {
             for (size_t i = 0; i < pair_count; i++) {
                 struct key_expression pair = e->struct_enum.key_expr_pairs.data[i];
                 fprintf(file, ".%s = ", pair.key->data);
-                write_expression(pair.expression, file);
+                write_expression(pair.expression, scope, file);
                 if (i + 1 < pair_count) {
                     fprintf(file, ",");
                 }
@@ -2284,7 +2285,66 @@ void write_literal_expression(struct literal_expression *e, FILE *file) {
         }
 }
 
-void write_unary_expression(struct unary_expression *e, FILE *file) {
+int get_scoped_variable_type(struct c_scope *scope,
+					         struct list_char variable_name,
+							 struct type *out)
+{
+	for (size_t i = 0; i < scope->preceding_statements.len; i++) {
+		struct statement s = scope->preceding_statements.statements[i];
+		if (s.kind == BINDING_STATEMENT) {
+			if (list_char_eq(&s.binding_statement.variable_name, &variable_name)
+				&& s.binding_statement.has_type)
+			{
+				*out = s.binding_statement.variable_type;
+				return 1;
+			}
+		}
+	}
+
+    for (size_t i = 0; i < scope->scoped_variables.size; i++) {
+        struct key_type_pair pair = scope->scoped_variables.data[i];
+        if (list_char_eq(&pair.field_name, &variable_name)) {
+            *out = *pair.field_type;
+            return 1;
+        }
+    }
+
+    if (scope->parent != NULL) {
+        return get_scoped_variable_type(scope->parent, variable_name, out);
+    }
+
+	return 0;
+}
+
+// TODO
+int expression_is_pointer(struct expression *e, struct c_scope *scope) {
+    switch (e->kind) {
+        case LITERAL_EXPRESSION:
+        {
+            if (e->literal.kind == LITERAL_NAME) {
+                struct type variable_type = {0};
+                if (get_scoped_variable_type(scope, *e->literal.name, &variable_type)) {
+                    for (size_t i = 0; i < variable_type.modifiers.size; i++) {
+                        if (variable_type.modifiers.data[i].kind == POINTER_MODIFIER_KIND) {
+                            return 1;
+                        }
+                    }
+                }
+            }
+
+            break;
+        }
+        case UNARY_EXPRESSION:
+        case BINARY_EXPRESSION:
+        case GROUP_EXPRESSION:
+        case FUNCTION_EXPRESSION:
+            break;
+    }
+
+    return 0;
+}
+
+void write_unary_expression(struct unary_expression *e, struct c_scope *scope, FILE *file) {
     switch (e->operator) {
         case BANG_UNARY:
             fprintf(file, "!");
@@ -2299,11 +2359,11 @@ void write_unary_expression(struct unary_expression *e, FILE *file) {
             UNREACHABLE("unary operator not handled");
     }
 
-    write_expression(e->expression, file);
+    write_expression(e->expression, scope, file);
 }
 
-void write_binary_expression(struct binary_expression *e, FILE *file) {
-    write_expression(e->l, file);
+void write_binary_expression(struct binary_expression *e, struct c_scope *scope, FILE *file) {
+    write_expression(e->l, scope, file);
     switch (e->binary_op) {
         case PLUS_BINARY:
             fprintf(file, " + ");
@@ -2336,25 +2396,31 @@ void write_binary_expression(struct binary_expression *e, FILE *file) {
             fprintf(file, " * ");
             break;
         case DOT_BINARY:
-            fprintf(file, ".");
+        {
+            if (expression_is_pointer(e->l, scope)) {
+                fprintf(file, "->");
+            } else {
+                fprintf(file, ".");
+            }
             break;
+        }
         default:
             UNREACHABLE("binary operator not handled");
     }
-    write_expression(e->r, file);
+    write_expression(e->r, scope, file);
 }
 
-void write_grouped_expression(struct expression *e, FILE *file) {
+void write_grouped_expression(struct expression *e, struct c_scope *scope, FILE *file) {
     fprintf(file, "(");
-    write_expression(e, file);
+    write_expression(e, scope, file);
     fprintf(file, ")");
 }
 
-void write_function_expression(struct function_expression *e, FILE *file) {
+void write_function_expression(struct function_expression *e, struct c_scope *scope, FILE *file) {
     fprintf(file, "%s(", e->function_name->data);
     size_t param_count = e->params->size;
     for (size_t i = 0; i < param_count; i++) {
-        write_expression(&e->params->data[i], file);
+        write_expression(&e->params->data[i], scope, file);
         if (i < param_count - 1) {
             fprintf(file, ", ");
         }
@@ -2362,45 +2428,26 @@ void write_function_expression(struct function_expression *e, FILE *file) {
     fprintf(file, ")");
 }
 
-void write_expression(struct expression *e, FILE *file) {
+void write_expression(struct expression *e, struct c_scope *scope, FILE *file) {
     switch (e->kind) {
         case LITERAL_EXPRESSION:
-            write_literal_expression(&e->literal, file);
+            write_literal_expression(&e->literal, scope, file);
             return;
         case UNARY_EXPRESSION:
-            write_unary_expression(&e->unary, file);
+            write_unary_expression(&e->unary, scope, file);
             return;
         case BINARY_EXPRESSION:
-            write_binary_expression(&e->binary, file);
+            write_binary_expression(&e->binary, scope, file);
             return;
         case GROUP_EXPRESSION:
-            write_grouped_expression(e->grouped, file);
+            write_grouped_expression(e->grouped, scope, file);
             return;
         case FUNCTION_EXPRESSION:
-            write_function_expression(&e->function, file);
+            write_function_expression(&e->function, scope, file);
             return;
         default:
             UNREACHABLE("expression kind not handled");
     }
-}
-
-int get_scoped_variable_type(struct c_scope *scope,
-					         struct list_char variable_name,
-							 struct type *out)
-{
-	for (size_t i = 0; i < scope->preceding_statements.len; i++) {
-		struct statement s = scope->preceding_statements.statements[i];
-		if (s.kind == BINDING_STATEMENT) {
-			if (list_char_eq(&s.binding_statement.variable_name, &variable_name)
-				&& s.binding_statement.has_type)
-			{
-				*out = s.binding_statement.variable_type;
-				return 1;
-			}
-		}
-	}
-
-	return 1;
 }
 
 int infer_type(struct expression *e, struct c_scope *scope, struct type *out) {
@@ -2505,14 +2552,14 @@ void write_binding_statement(struct binding_statement *s, struct c_scope *scope,
         // TODO: check has_type
         write_type_default(&s->variable_type, file);
     } else {
-        write_expression(&s->value, file);
+        write_expression(&s->value, scope, file);
     }
     fprintf(file, ";");
 }
 
 void write_if_statement(struct if_statement *s, struct c_scope *scope, FILE *file) {
     fprintf(file, "if (");
-    write_expression(&s->condition, file);
+    write_expression(&s->condition, scope, file);
     fprintf(file, ")");
     write_statement(s->success_statement, scope, file);
     if (s->else_statement != NULL) {
@@ -2523,7 +2570,7 @@ void write_if_statement(struct if_statement *s, struct c_scope *scope, FILE *fil
 
 void write_return_statement(struct expression *e, struct c_scope *scope, FILE *file) {
     fprintf(file, "return ");
-    write_expression(e, file);
+    write_expression(e, scope, file);
     fprintf(file, ";");
 }
 
@@ -2545,23 +2592,35 @@ void write_block_statement(struct list_statement *statements, struct c_scope *sc
 }
 
 void write_action_statement(struct expression *e, struct c_scope *scope, FILE *file) {
-    write_expression(e, file);
+    write_expression(e, scope, file);
     fprintf(file, ";");
 }
 
 void write_while_statement(struct while_loop_statement *s, struct c_scope *scope, FILE *file) {
     fprintf(file, "while (");
-    write_expression(&s->condition, file);
+    write_expression(&s->condition, scope, file);
     fprintf(file, ")");
     write_statement(s->do_statement, scope, file);
 }
 
-void write_type_declaration_statement(struct type_declaration_statement *s, struct c_scope *scope, FILE *file) {
+void write_type_declaration_statement(struct type_declaration_statement *s,
+                                      struct c_scope *scope,
+                                      FILE *file)
+{
     write_type(&s->type, file);
     if (s->type.kind == TY_FUNCTION)
     {
 		assert(s->statements != NULL);
-        write_block_statement(s->statements, scope, file);
+        struct c_scope inner_scope = (struct c_scope) {
+            .preceding_statements = (struct statement_slice) {
+                .statements = NULL,
+                .len = 0
+            },
+            .parent = scope,
+            .scoped_variables = s->type.function_type.params
+        };
+        
+        write_block_statement(s->statements, &inner_scope, file);
     }
 }
 
