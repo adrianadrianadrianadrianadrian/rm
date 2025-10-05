@@ -1628,22 +1628,24 @@ enum switch_pattern_kind {
     OBJECT_PATTERN_KIND,
     ARRAY_PATTERN_KIND,
     NUMBER_PATTERN_KIND,
-    STRING_PATTERN_KIND
+    STRING_PATTERN_KIND,
+    VARIABLE_PATTERN_KIND,
+    REST_PATTERN_KIND
 };
     
-struct key_pattern_pair {
+typedef struct key_pattern_pair {
     struct list_char key;
     struct switch_pattern *pattern;
-};
+} key_pattern_pair;
+
+struct_list(key_pattern_pair);
 
 struct object_pattern {
-    struct key_pattern_pair *pairs;
-    size_t len;
+    struct list_key_pattern_pair pairs;
 };
 
 struct array_pattern {
-    struct switch_pattern *patterns;
-    size_t len;
+    struct list_switch_pattern *patterns;
 };
 
 struct number_pattern {
@@ -1654,26 +1656,164 @@ struct string_pattern {
     struct list_char str;
 };
 
-struct switch_pattern {
+struct variable_pattern {
+    struct list_char variable_name;
+};
+
+typedef struct switch_pattern {
     enum switch_pattern_kind switch_pattern_kind;
     union {
         struct object_pattern object_pattern;
         struct array_pattern array_pattern;
         struct number_pattern number_pattern;
         struct string_pattern string_pattern;
+        struct variable_pattern variable_pattern;
     };
-};
+} switch_pattern;
 
-typedef struct case_statement {
-	struct switch_pattern pattern;
-} case_statement;
+struct_list(switch_pattern);
 
-struct_list(case_statement);
+int parse_switch_pattern(struct token_buffer *tb, struct switch_pattern *out);
 
-struct switch_statement {
-	struct expression switch_expression;
-	struct list_case_statement cases;
-};
+int parse_variable_pattern(struct token_buffer *tb, struct switch_pattern *out)
+{
+    struct token tmp = {0};
+    if (!get_token_type(tb, &tmp, IDENTIFIER)) return 0;
+    *out = (struct switch_pattern) {
+        .switch_pattern_kind = VARIABLE_PATTERN_KIND,
+        .variable_pattern = (struct variable_pattern) {
+            .variable_name = *tmp.identifier
+        }
+    };
+
+    return 1;
+}
+
+int parse_string_pattern(struct token_buffer *tb, struct switch_pattern *out)
+{
+    struct token tmp = {0};
+    if (!get_token_type(tb, &tmp, STR_LITERAL)) return 0;
+    *out = (struct switch_pattern) {
+        .switch_pattern_kind = STRING_PATTERN_KIND,
+        .string_pattern = (struct string_pattern) {
+            .str = *tmp.identifier
+        }
+    };
+
+    return 1;
+}
+
+int parse_number_pattern(struct token_buffer *tb, struct switch_pattern *out)
+{
+    struct token tmp = {0};
+    if (!get_token_type(tb, &tmp, NUMERIC)) return 0;
+    *out = (struct switch_pattern) {
+        .switch_pattern_kind = NUMBER_PATTERN_KIND,
+        .number_pattern = (struct number_pattern) {
+            .number = tmp.numeric
+        }
+    };
+    
+    return 1;
+}
+
+int parse_rest_pattern(struct token_buffer *tb, struct switch_pattern *out)
+{
+    struct token tmp = {0};
+    if (!get_token_type(tb, &tmp, DOT)) return 0;
+    if (!get_token_type(tb, &tmp, DOT)) return 0;
+
+    *out = (struct switch_pattern) {
+        .switch_pattern_kind = REST_PATTERN_KIND
+    };
+    
+    return 1;
+}
+
+int parse_array_pattern(struct token_buffer *tb, struct switch_pattern *out)
+{
+    struct token tmp = {0};
+    struct list_switch_pattern *patterns = malloc(sizeof(*patterns));
+    *patterns = list_create(switch_pattern, 10);
+    int should_continue = 1;
+
+    if (!get_token_where(tb, &tmp, is_open_square)) return 0;
+    while (should_continue) {
+        struct switch_pattern p = {0};
+        if (parse_switch_pattern(tb, &p)) {
+            list_append(patterns, p);
+        }
+        should_continue = get_token_type(tb, &tmp, COMMA);
+    }
+    if (!get_token_where(tb, &tmp, is_close_square)) return 0;
+    *out = (switch_pattern) {
+        .switch_pattern_kind = ARRAY_PATTERN_KIND,
+        .array_pattern = (struct array_pattern) {
+            .patterns = patterns
+        }
+    };
+
+    return 1;
+}
+
+int parse_key_pattern_pair(struct token_buffer *tb, struct key_pattern_pair *out)
+{
+    struct token tmp = {0};
+    struct list_char key = {0};
+    struct switch_pattern *pattern = malloc(sizeof(*pattern));
+    if (!get_token_type(tb, &tmp, IDENTIFIER)) {
+        if (!parse_rest_pattern(tb, pattern)) return 0;
+        *out = (struct key_pattern_pair) {
+            .key = key,
+            .pattern = pattern
+        };
+        return 1;
+    }
+    key = *tmp.identifier;
+    if (!get_token_type(tb, &tmp, COLON))      return 0;
+    if (parse_switch_pattern(tb, pattern))     return 0;
+    *out = (struct key_pattern_pair) {
+        .key = key,
+        .pattern = pattern
+    };
+
+    return 0;
+}
+
+int parse_object_pattern(struct token_buffer *tb, struct switch_pattern *out)
+{
+    struct token tmp = {0};
+    int should_continue = 1;
+    struct list_key_pattern_pair pairs = list_create(key_pattern_pair, 10);
+
+    if (!get_token_where(tb, &tmp, is_open_curly)) return 0;
+    while (should_continue) {
+        struct key_pattern_pair p = {0};
+        if (parse_key_pattern_pair(tb, &p)) {
+            list_append(&pairs, p);
+        }
+        should_continue = get_token_type(tb, &tmp, COMMA);
+    }
+    if (!get_token_where(tb, &tmp, is_close_curly)) return 0;
+    *out = (struct switch_pattern) {
+        .switch_pattern_kind = OBJECT_PATTERN_KIND,
+        .object_pattern = (struct object_pattern) {
+            .pairs = pairs
+        }
+    };
+
+    return 1;
+}
+
+int parse_switch_pattern(struct token_buffer *tb, struct switch_pattern *out)
+{
+    return try_parse(tb, out, (parser_t)parse_object_pattern)
+        || try_parse(tb, out, (parser_t)parse_array_pattern)
+        || try_parse(tb, out, (parser_t)parse_rest_pattern)
+        || try_parse(tb, out, (parser_t)parse_number_pattern)
+        || try_parse(tb, out, (parser_t)parse_string_pattern)
+        || try_parse(tb, out, (parser_t)parse_variable_pattern);
+}
 
 struct type_declaration_statement {
     struct type type;
@@ -1703,6 +1843,18 @@ struct include_statement {
     int external;
 };
 
+typedef struct case_statement {
+	struct switch_pattern pattern;
+    struct statement *statement;
+} case_statement;
+
+struct_list(case_statement);
+
+struct switch_statement {
+	struct expression switch_expression;
+	struct list_case_statement cases;
+};
+
 typedef struct statement {
     enum statement_kind kind;
     union {
@@ -1713,6 +1865,7 @@ typedef struct statement {
         struct while_loop_statement while_loop_statement;
         struct type_declaration_statement type_declaration;
         struct include_statement include_statement;
+        struct switch_statement switch_statement;
     };
 } statement;
 
@@ -1816,8 +1969,7 @@ int parse_binding_statement(struct token_buffer *s, struct statement *out)
 }
 
 int parse_block_statement(struct token_buffer *s,
-                          struct statement *out,
-                          int with_semicolon)
+                          struct statement *out)
 {
     struct token tmp = {0};
     if (!get_token_where(s, &tmp, is_open_curly)) return 0;
@@ -1838,20 +1990,12 @@ int parse_block_statement(struct token_buffer *s,
         }
     }
 
-    if (with_semicolon && !get_token_type(s, &tmp, SEMICOLON)) return 0;
-
     *out = (struct statement) {
         .kind = BLOCK_STATEMENT,
         .statements = statements
     };
 
     return 1;
-}
-
-int parse_block_statement_with_semicolon(struct token_buffer *s,
-                                         struct statement *out)
-{
-    return parse_block_statement(s, out, 1);
 }
 
 int parse_if_statement(struct token_buffer *s,
@@ -1866,11 +2010,11 @@ int parse_if_statement(struct token_buffer *s,
     if (!get_and_expect_token_where(s, &tmp, is_open_round))  return 0;
     if (!parse_expression(s, &condition))                     return 0;
     if (!get_and_expect_token_where(s, &tmp, is_close_round)) return 0;
-    if (!parse_block_statement(s, success_statement, 0))      return 0;
+    if (!parse_block_statement(s, success_statement))         return 0;
     if (get_token_where(s, &tmp, is_keyword_else)) {
         else_statement = malloc(sizeof(*else_statement));
         if (!parse_if_statement(s, else_statement) &&
-            !parse_block_statement(s, else_statement, 0))
+            !parse_block_statement(s, else_statement))
         {
             return 0;
         }
@@ -1913,7 +2057,7 @@ int parse_while_loop_statement(struct token_buffer *s, struct statement *out)
     if (!get_and_expect_token_where(s, &tmp, is_open_round))  return 0;
     if (!parse_expression(s, &expression))                    return 0;
     if (!get_and_expect_token_where(s, &tmp, is_close_round)) return 0;
-    if (!parse_block_statement(s, do_statement, 0))           return 0;
+    if (!parse_block_statement(s, do_statement))              return 0;
 
     *out = (struct statement) {
         .kind = WHILE_LOOP_STATEMENT,
@@ -1941,7 +2085,7 @@ int parse_type_declaration(struct token_buffer *s, struct statement *out) {
     }
 
     struct statement body = {0};
-    if (!parse_block_statement(s, &body, 0)) return 0;
+    if (!parse_block_statement(s, &body)) return 0;
 
     *out = (struct statement) {
         .kind = TYPE_DECLARATION_STATEMENT,
@@ -1954,16 +2098,64 @@ int parse_type_declaration(struct token_buffer *s, struct statement *out) {
     return 1;
 }
 
+int parse_case_statement(struct token_buffer *tb, struct case_statement *out)
+{
+    struct token tmp = {0};
+    struct switch_pattern pattern = {0};
+    struct statement *s = malloc(sizeof(*s));
+    if (!get_token_where(tb, &tmp, is_keyword_case)) return 0;
+    if (!parse_switch_pattern(tb, &pattern))         return 0;
+    if (!get_token_type(tb, &tmp, COLON))            return 0;
+    if (!parse_statement(tb, s))                     return 0;
+    *out = (struct case_statement) {
+        .pattern = pattern,
+        .statement = s
+    };
+    
+    return 1;
+}
+
+int parse_switch_statement(struct token_buffer *tb, struct statement *out)
+{
+    struct token tmp = {0};
+    struct expression switch_on = {0};
+    struct list_case_statement cases = list_create(case_statement, 10);
+    int should_continue = 1;
+
+    if (!get_token_where(tb, &tmp, is_keyword_switch)) return 0;
+    if (!get_token_where(tb, &tmp, is_open_round))     return 0;
+    if (!parse_expression(tb, &switch_on))             return 0;
+    if (!get_token_where(tb, &tmp, is_close_round))    return 0;
+
+    if (!get_token_where(tb, &tmp, is_open_curly))    return 0;
+    while (should_continue) {
+        struct case_statement case_s = {0};
+        if (!parse_case_statement(tb, &case_s))        return 0;
+        should_continue = !get_token_where(tb, &tmp, is_close_curly);
+    }
+
+    *out = (struct statement) {
+        .kind = SWITCH_STATEMENT,
+        .switch_statement = (struct switch_statement) {
+            .switch_expression = switch_on,
+            .cases = cases
+        }
+    };
+    
+    return 0;
+}
+
 int parse_statement(struct token_buffer *s, struct statement *out) {
     return try_parse(s, out, (parser_t)parse_return_statement)
         || try_parse(s, out, (parser_t)parse_break_statement)
         || try_parse(s, out, (parser_t)parse_binding_statement)
         || try_parse(s, out, (parser_t)parse_if_statement)
-        || try_parse(s, out, (parser_t)parse_block_statement_with_semicolon)
+        || try_parse(s, out, (parser_t)parse_block_statement)
         || try_parse(s, out, (parser_t)parse_action_statement)
         || try_parse(s, out, (parser_t)parse_while_loop_statement)
         || try_parse(s, out, (parser_t)parse_type_declaration)
-        || try_parse(s, out, (parser_t)parse_include_statement);
+        || try_parse(s, out, (parser_t)parse_include_statement)
+        || try_parse(s, out, (parser_t)parse_switch_statement);
 }
 
 struct rm_file {
