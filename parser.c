@@ -2126,11 +2126,12 @@ int parse_switch_statement(struct token_buffer *tb, struct statement *out)
     if (!get_token_where(tb, &tmp, is_open_round))     return 0;
     if (!parse_expression(tb, &switch_on))             return 0;
     if (!get_token_where(tb, &tmp, is_close_round))    return 0;
+    if (!get_token_where(tb, &tmp, is_open_curly))     return 0;
 
-    if (!get_token_where(tb, &tmp, is_open_curly))    return 0;
     while (should_continue) {
         struct case_statement case_s = {0};
         if (!parse_case_statement(tb, &case_s))        return 0;
+        list_append(&cases, case_s);
         should_continue = !get_token_where(tb, &tmp, is_close_curly);
     }
 
@@ -2142,7 +2143,7 @@ int parse_switch_statement(struct token_buffer *tb, struct statement *out)
         }
     };
     
-    return 0;
+    return 1;
 }
 
 int parse_statement(struct token_buffer *s, struct statement *out) {
@@ -2836,7 +2837,56 @@ void write_include_statement(struct include_statement *s, struct c_scope *scope,
     fprintf(file, "\n");
 }
 
+void write_case_predicate(struct switch_pattern *p,
+                          struct expression *e,
+                          struct c_scope *scope,
+                          FILE *file)
+{
+    switch (p->switch_pattern_kind) {
+        case OBJECT_PATTERN_KIND:
+            break;
+        case ARRAY_PATTERN_KIND:
+            break;
+        case NUMBER_PATTERN_KIND:
+            break;
+        case STRING_PATTERN_KIND:
+            break;
+        case VARIABLE_PATTERN_KIND:
+        {
+            // struct type inferred_type = {0};
+            // if (infer_type(e, scope, &inferred_type)) {
+            //     write_type(&inferred_type, file);
+            //     fprintf(file, " %s = ", p->variable_pattern.variable_name.data);
+            //     write_expression(e, scope, file);
+            //     fprintf(file, ";");
+            // }
+            fprintf(file, "if (1)");
+            break;
+        }
+        case REST_PATTERN_KIND:
+            UNREACHABLE("todo error handling");
+    }
+}
+
+void write_case_statement(struct case_statement *s,
+                          struct expression *e,
+                          struct c_scope *scope,
+                          FILE *file)
+{
+    write_case_predicate(&s->pattern, e, scope, file);
+    fprintf(file, "{");
+    write_statement(s->statement, scope, file);
+    fprintf(file, "}");
+}
+
+void write_switch_statement(struct switch_statement *s, struct c_scope *scope, FILE *file) {
+    for (size_t i = 0; i < s->cases.size; i++) {
+        write_case_statement(&s->cases.data[i], &s->switch_expression, scope, file);
+    }
+}
+
 void write_statement(struct statement *s, struct c_scope *scope, FILE *file) {
+    printf("statement %d\n", s->kind);
     switch (s->kind) {
         case BINDING_STATEMENT:
             write_binding_statement(&s->binding_statement, scope, file);
@@ -2864,6 +2914,9 @@ void write_statement(struct statement *s, struct c_scope *scope, FILE *file) {
             break;
         case INCLUDE_STATEMENT:
             write_include_statement(&s->include_statement, scope, file);
+            break;
+        case SWITCH_STATEMENT:
+            write_switch_statement(&s->switch_statement, scope, file);
             break;
         default:
             UNREACHABLE("statement type not handled");
