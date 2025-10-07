@@ -2886,7 +2886,6 @@ void write_switch_statement(struct switch_statement *s, struct c_scope *scope, F
 }
 
 void write_statement(struct statement *s, struct c_scope *scope, FILE *file) {
-    printf("statement %d\n", s->kind);
     switch (s->kind) {
         case BINDING_STATEMENT:
             write_binding_statement(&s->binding_statement, scope, file);
