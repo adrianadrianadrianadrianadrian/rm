@@ -1630,6 +1630,7 @@ enum switch_pattern_kind {
     NUMBER_PATTERN_KIND,
     STRING_PATTERN_KIND,
     VARIABLE_PATTERN_KIND,
+    UNDERSCORE_PATTERN_KIND,
     REST_PATTERN_KIND
 };
     
@@ -1675,16 +1676,25 @@ struct_list(switch_pattern);
 
 int parse_switch_pattern(struct token_buffer *tb, struct switch_pattern *out);
 
-int parse_variable_pattern(struct token_buffer *tb, struct switch_pattern *out)
+int parse_variable_or_underscore_pattern(struct token_buffer *tb, struct switch_pattern *out)
 {
     struct token tmp = {0};
     if (!get_token_type(tb, &tmp, IDENTIFIER)) return 0;
-    *out = (struct switch_pattern) {
-        .switch_pattern_kind = VARIABLE_PATTERN_KIND,
-        .variable_pattern = (struct variable_pattern) {
-            .variable_name = *tmp.identifier
-        }
-    };
+    if (strcmp(tmp.identifier->data, "_") == 0) {
+        *out = (struct switch_pattern) {
+            .switch_pattern_kind = UNDERSCORE_PATTERN_KIND,
+            .variable_pattern = (struct variable_pattern) {
+                .variable_name = *tmp.identifier
+            }
+        };
+    } else {
+        *out = (struct switch_pattern) {
+            .switch_pattern_kind = VARIABLE_PATTERN_KIND,
+            .variable_pattern = (struct variable_pattern) {
+                .variable_name = *tmp.identifier
+            }
+        };
+    }
 
     return 1;
 }
@@ -1812,7 +1822,7 @@ int parse_switch_pattern(struct token_buffer *tb, struct switch_pattern *out)
         || try_parse(tb, out, (parser_t)parse_rest_pattern)
         || try_parse(tb, out, (parser_t)parse_number_pattern)
         || try_parse(tb, out, (parser_t)parse_string_pattern)
-        || try_parse(tb, out, (parser_t)parse_variable_pattern);
+        || try_parse(tb, out, (parser_t)parse_variable_or_underscore_pattern);
 }
 
 struct type_declaration_statement {
@@ -2478,6 +2488,8 @@ void write_literal_expression(struct literal_expression *e, struct c_scope *scop
         }
 }
 
+int infer_type(struct expression *e, struct c_scope *scope, struct type *out);
+
 int get_scoped_variable_type(struct c_scope *scope,
 					         struct list_char variable_name,
 							 struct type *out)
@@ -2485,11 +2497,20 @@ int get_scoped_variable_type(struct c_scope *scope,
 	for (size_t i = 0; i < scope->preceding_statements.len; i++) {
 		struct statement s = scope->preceding_statements.statements[i];
 		if (s.kind == BINDING_STATEMENT) {
-			if (list_char_eq(&s.binding_statement.variable_name, &variable_name)
-				&& s.binding_statement.has_type)
+			if (list_char_eq(&s.binding_statement.variable_name, &variable_name))
 			{
-				*out = s.binding_statement.variable_type;
-				return 1;
+                if (s.binding_statement.has_type)
+                {
+                    *out = s.binding_statement.variable_type;
+                    return 1;
+                }
+                
+                struct type inferred = {0};
+                if (infer_type(&s.binding_statement.value, scope, &inferred))
+                {
+                    *out = inferred;
+                    return 1;
+                }
 			}
 		}
 	}
@@ -2508,6 +2529,70 @@ int get_scoped_variable_type(struct c_scope *scope,
 
 	return 0;
 }
+
+int infer_type(struct expression *e, struct c_scope *scope, struct type *out) {
+    switch (e->kind) {
+        case LITERAL_EXPRESSION:
+        {
+            switch (e->literal.kind) {
+                case LITERAL_BOOLEAN:
+                {
+                    *out = (struct type) {
+                        .kind = TY_PRIMITIVE,
+                        .primitive_type = BOOL
+                    };
+                    return 1;
+                }
+                case LITERAL_CHAR:
+                {
+                    *out = (struct type) {
+                        .kind = TY_PRIMITIVE,
+                        .primitive_type = U8
+                    };
+                    return 1;
+                }
+                case LITERAL_STRUCT:
+                {
+                    *out = (struct type) {
+                        .kind = TY_STRUCT,
+                        .name = e->literal.struct_enum.name,
+                        .struct_type = (struct struct_type) {
+                            .predefined = 1,
+                        }
+                    };
+                    return 1;
+                }
+                case LITERAL_ENUM:
+                {
+                    *out = (struct type) {
+                        .kind = TY_ENUM,
+                        .name = e->literal.struct_enum.name,
+                        .struct_type = (struct struct_type) {
+                            .predefined = 1,
+                        }
+                    };
+                    return 1;
+                }
+                case LITERAL_STR:
+                case LITERAL_NUMERIC:
+                case LITERAL_HOLE:
+                case LITERAL_NULL:
+                    return 0;
+                case LITERAL_NAME:
+					return get_scoped_variable_type(scope, *e->literal.name, out);
+            }
+        }
+        case UNARY_EXPRESSION:
+		{
+			return infer_type(e->unary.expression, scope, out);
+		}
+        case BINARY_EXPRESSION:
+        case GROUP_EXPRESSION:
+        case FUNCTION_EXPRESSION:
+            return 0;
+    }
+}
+
 
 // TODO
 int expression_is_pointer(struct expression *e, struct c_scope *scope) {
@@ -2640,69 +2725,6 @@ void write_expression(struct expression *e, struct c_scope *scope, FILE *file) {
             return;
         default:
             UNREACHABLE("expression kind not handled");
-    }
-}
-
-int infer_type(struct expression *e, struct c_scope *scope, struct type *out) {
-    switch (e->kind) {
-        case LITERAL_EXPRESSION:
-        {
-            switch (e->literal.kind) {
-                case LITERAL_BOOLEAN:
-                {
-                    *out = (struct type) {
-                        .kind = TY_PRIMITIVE,
-                        .primitive_type = BOOL
-                    };
-                    return 1;
-                }
-                case LITERAL_CHAR:
-                {
-                    *out = (struct type) {
-                        .kind = TY_PRIMITIVE,
-                        .primitive_type = U8
-                    };
-                    return 1;
-                }
-                case LITERAL_STRUCT:
-                {
-                    *out = (struct type) {
-                        .kind = TY_STRUCT,
-                        .name = e->literal.struct_enum.name,
-                        .struct_type = (struct struct_type) {
-                            .predefined = 1,
-                        }
-                    };
-                    return 1;
-                }
-                case LITERAL_ENUM:
-                {
-                    *out = (struct type) {
-                        .kind = TY_ENUM,
-                        .name = e->literal.struct_enum.name,
-                        .struct_type = (struct struct_type) {
-                            .predefined = 1,
-                        }
-                    };
-                    return 1;
-                }
-                case LITERAL_STR:
-                case LITERAL_NUMERIC:
-                case LITERAL_HOLE:
-                case LITERAL_NULL:
-                    return 0;
-                case LITERAL_NAME:
-					return get_scoped_variable_type(scope, *e->literal.name, out);
-            }
-        }
-        case UNARY_EXPRESSION:
-		{
-			return infer_type(e->unary.expression, scope, out);
-		}
-        case BINARY_EXPRESSION:
-        case GROUP_EXPRESSION:
-        case FUNCTION_EXPRESSION:
-            return 0;
     }
 }
 
@@ -2842,30 +2864,58 @@ void write_case_predicate(struct switch_pattern *p,
                           struct c_scope *scope,
                           FILE *file)
 {
+    // Just hacking this together for now, to play.
     switch (p->switch_pattern_kind) {
         case OBJECT_PATTERN_KIND:
+        {
             break;
+        }
         case ARRAY_PATTERN_KIND:
             break;
         case NUMBER_PATTERN_KIND:
+        {
+            struct type inferred_type = {0};
+            if (infer_type(e, scope, &inferred_type)) {
+                write_type(&inferred_type, file);
+                fprintf(file, " *_number_tmp = &");
+                write_expression(e, scope, file);
+                fprintf(file, ";");
+            }
+            fprintf(file, "if (*_number_tmp == %lf)", p->number_pattern.number);
             break;
+        }
         case STRING_PATTERN_KIND:
+        {
+            struct type inferred_type = {0};
+            if (infer_type(e, scope, &inferred_type)) {
+                write_type(&inferred_type, file);
+                fprintf(file, " *_str_tmp = &");
+                write_expression(e, scope, file);
+                fprintf(file, ";");
+            }
+            fprintf(file, "if (strcmp(_str_tmp, \"%s\") == 0)", p->string_pattern.str.data);
             break;
+        }
         case VARIABLE_PATTERN_KIND:
         {
-            // struct type inferred_type = {0};
-            // if (infer_type(e, scope, &inferred_type)) {
-            //     write_type(&inferred_type, file);
-            //     fprintf(file, " %s = ", p->variable_pattern.variable_name.data);
-            //     write_expression(e, scope, file);
-            //     fprintf(file, ";");
-            // }
+            struct type inferred_type = {0};
+            if (infer_type(e, scope, &inferred_type)) {
+                write_type(&inferred_type, file);
+                fprintf(file, " %s = ", p->variable_pattern.variable_name.data);
+                write_expression(e, scope, file);
+                fprintf(file, ";");
+            }
+            fprintf(file, "if (1)");
+            break;
+        }
+        case UNDERSCORE_PATTERN_KIND:
+        {
             fprintf(file, "if (1)");
             break;
         }
         case REST_PATTERN_KIND:
             UNREACHABLE("todo error handling");
-    }
+        }
 }
 
 void write_case_statement(struct case_statement *s,
