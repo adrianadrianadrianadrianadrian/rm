@@ -505,15 +505,3 @@ int get_token_type(struct token_buffer *s,
 
     return 1;
 }
-
-int get_and_expect_token(struct token_buffer *s,
-                         struct token *out,
-                         enum token_type ty)
-{
-    if (!get_token_type(s, out, ty)) {
-        // TODO: handle error
-        return 0;
-    }
-
-    return 1;
-}

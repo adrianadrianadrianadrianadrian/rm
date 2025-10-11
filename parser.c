@@ -125,7 +125,7 @@ int parse_array_type_modifier(struct token_buffer *tb, struct type_modifier *out
     struct token tmp = {0};
     int size = 0;
     int sized = 0;
-    if (!get_token_type(tb, &tmp, OPEN_SQUARE_PAREN)) return 0;
+    if (!get_token_type(tb, &tmp, OPEN_SQUARE_PAREN))  return 0;
     if (get_token_type(tb, &tmp, NUMERIC)) {
         sized = 1;
         size = (int)tmp.numeric; // TODO: numeric token needs improving
@@ -202,12 +202,12 @@ int parse_function_type(struct token_buffer *s, struct type *out, int named)
     struct list_key_type_pair params = list_create(key_type_pair, 10);
     struct type *return_type = malloc(sizeof(*return_type));
 
-    if (named && !get_and_expect_token(s, &name, IDENTIFIER)) return 0;
-    if (!get_and_expect_token(s, &tmp, OPEN_ROUND_PAREN))     return 0;
+    if (named && !get_token_type(s, &name, IDENTIFIER)) return 0;
+    if (!get_token_type(s, &tmp, OPEN_ROUND_PAREN))     return 0;
     parse_key_type_pairs(s, &params);
-    if (!get_and_expect_token(s, &tmp, CLOSE_ROUND_PAREN))    return 0;
-    if (!get_and_expect_token(s, &tmp, RIGHT_ARROW))          return 0;
-    if (!parse_type(s, return_type, 0, 1))                    return 0;
+    if (!get_token_type(s, &tmp, CLOSE_ROUND_PAREN))    return 0;
+    if (!get_token_type(s, &tmp, RIGHT_ARROW))          return 0;
+    if (!parse_type(s, return_type, 0, 1))              return 0;
 
     *out = (struct type) {
         .kind = TY_FUNCTION,
@@ -228,10 +228,10 @@ int parse_struct_type(struct token_buffer *s, struct type *out, int predefined_t
     struct token tmp = {0};
     struct list_key_type_pair pairs = list_create(key_type_pair, 10);
 
-    if (!get_and_expect_token(s, &name, IDENTIFIER))           return 0;
+    if (!get_token_type(s, &name, IDENTIFIER))           return 0;
     if (!predefined_type && get_token_type(s, &tmp, OPEN_CURLY_PAREN)) {
-        if (!parse_key_type_pairs(s, &pairs))                  return 0;
-        if (!get_and_expect_token(s, &tmp, CLOSE_CURLY_PAREN)) return 0;
+        if (!parse_key_type_pairs(s, &pairs))            return 0;
+        if (!get_token_type(s, &tmp, CLOSE_CURLY_PAREN)) return 0;
     }
 
     *out = (struct type) {
@@ -253,10 +253,10 @@ int parse_enum_type(struct token_buffer *s, struct type *out, int predefined_typ
     struct token tmp = {0};
     struct list_key_type_pair pairs = list_create(key_type_pair, 10);
 
-    if (!get_and_expect_token(s, &name, IDENTIFIER))              return 0;
+    if (!get_token_type(s, &name, IDENTIFIER))              return 0;
     if (!predefined_type && get_token_type(s, &tmp, OPEN_CURLY_PAREN)) {
-        if (!parse_key_type_pairs(s, &pairs))                     return 0;
-        if (!get_and_expect_token(s, &tmp, CLOSE_CURLY_PAREN))    return 0;
+        if (!parse_key_type_pairs(s, &pairs))               return 0;
+        if (!get_token_type(s, &tmp, CLOSE_CURLY_PAREN))    return 0;
     } 
 
     *out = (struct type) {
@@ -278,8 +278,8 @@ int parse_primitive_type(struct token_buffer *s, struct type *out)
     enum primitive_type primitive_type;
     struct token name = {0};
 
-    if (!get_token_type(s, &tmp, IDENTIFIER))                 return 0;
-    if (!is_primitive(tmp.identifier, &primitive_type))       return 0;
+    if (!get_token_type(s, &tmp, IDENTIFIER))           return 0;
+    if (!is_primitive(tmp.identifier, &primitive_type)) return 0;
 
     *out = (struct type) {
         .kind = TY_PRIMITIVE,
@@ -877,7 +877,7 @@ int parse_return_statement(struct token_buffer *s, struct statement *out)
     struct expression expression = {0};
     if (!get_token_type(s, &tmp, RETURN_KEYWORD))  return 0;
     if (!parse_expression(s, &expression))         return 0;
-    if (!get_and_expect_token(s, &tmp, SEMICOLON)) return 0;
+    if (!get_token_type(s, &tmp, SEMICOLON))       return 0;
 
     *out = (struct statement) {
         .kind = RETURN_STATEMENT,
@@ -895,15 +895,15 @@ int parse_binding_statement(struct token_buffer *s, struct statement *out)
     struct list_char variable_name = {0};
     int has_type = 0;
     
-    if (!get_token_type(s, &tmp, IDENTIFIER))      return 0;
+    if (!get_token_type(s, &tmp, IDENTIFIER)) return 0;
     variable_name = *tmp.identifier;
     if (get_token_type(s, &tmp, COLON)) {
-        if (!parse_type(s, &type, 0, 1))           return 0;
+        if (!parse_type(s, &type, 0, 1))      return 0;
         has_type = 1;
     }
-    if (!get_and_expect_token(s, &tmp, EQ))        return 0;
-    if (!parse_expression(s, &expression))         return 0;
-    if (!get_and_expect_token(s, &tmp, SEMICOLON)) return 0;
+    if (!get_token_type(s, &tmp, EQ))         return 0;
+    if (!parse_expression(s, &expression))    return 0;
+    if (!get_token_type(s, &tmp, SEMICOLON))  return 0;
 
     *out = (struct statement) {
         .kind = BINDING_STATEMENT,
@@ -956,11 +956,11 @@ int parse_if_statement(struct token_buffer *s,
     struct statement *success_statement = malloc(sizeof(*success_statement));
     struct statement *else_statement = NULL;
 
-    if (!get_token_type(s, &tmp, IF_KEYWORD))              return 0;
-    if (!get_and_expect_token(s, &tmp, OPEN_ROUND_PAREN))  return 0;
-    if (!parse_expression(s, &condition))                  return 0;
-    if (!get_and_expect_token(s, &tmp, CLOSE_ROUND_PAREN)) return 0;
-    if (!parse_block_statement(s, success_statement))      return 0;
+    if (!get_token_type(s, &tmp, IF_KEYWORD))         return 0;
+    if (!get_token_type(s, &tmp, OPEN_ROUND_PAREN))   return 0;
+    if (!parse_expression(s, &condition))             return 0;
+    if (!get_token_type(s, &tmp, CLOSE_ROUND_PAREN))  return 0;
+    if (!parse_block_statement(s, success_statement)) return 0;
     if (get_token_type(s, &tmp, ELSE_KEYWORD)) {
         else_statement = malloc(sizeof(*else_statement));
         if (!parse_if_statement(s, else_statement) &&
@@ -986,8 +986,8 @@ int parse_action_statement(struct token_buffer *s, struct statement *out)
 {
     struct token tmp = {0};
     struct expression expression = {0};
-    if (!parse_expression(s, &expression))         return 0;
-    if (!get_and_expect_token(s, &tmp, SEMICOLON)) return 0;
+    if (!parse_expression(s, &expression))   return 0;
+    if (!get_token_type(s, &tmp, SEMICOLON)) return 0;
     
     *out = (struct statement) {
         .kind = ACTION_STATEMENT,
@@ -1003,11 +1003,11 @@ int parse_while_loop_statement(struct token_buffer *s, struct statement *out)
     struct statement *do_statement = malloc(sizeof(*do_statement));
     struct expression expression = {0};
 
-    if (!get_token_type(s, &tmp, WHILE_KEYWORD))           return 0;
-    if (!get_and_expect_token(s, &tmp, OPEN_ROUND_PAREN))  return 0;
-    if (!parse_expression(s, &expression))                 return 0;
-    if (!get_and_expect_token(s, &tmp, CLOSE_ROUND_PAREN)) return 0;
-    if (!parse_block_statement(s, do_statement))           return 0;
+    if (!get_token_type(s, &tmp, WHILE_KEYWORD))     return 0;
+    if (!get_token_type(s, &tmp, OPEN_ROUND_PAREN))  return 0;
+    if (!parse_expression(s, &expression))           return 0;
+    if (!get_token_type(s, &tmp, CLOSE_ROUND_PAREN)) return 0;
+    if (!parse_block_statement(s, do_statement))     return 0;
 
     *out = (struct statement) {
         .kind = WHILE_LOOP_STATEMENT,

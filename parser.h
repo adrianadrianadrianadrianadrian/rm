@@ -85,6 +85,7 @@ typedef struct type {
 } type;
 
 struct_list(type);
+
 enum expression_kind {
     LITERAL_EXPRESSION = 1,
     UNARY_EXPRESSION,
@@ -240,6 +241,7 @@ typedef struct switch_pattern {
 } switch_pattern;
 
 struct_list(switch_pattern);
+
 struct type_declaration_statement {
     struct type type;
     struct list_statement *statements;

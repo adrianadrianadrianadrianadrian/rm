@@ -86,7 +86,6 @@ struct token_buffer {
 struct token_buffer create_token_buffer(FILE *fstream);
 void seek_back_token(struct token_buffer *s, size_t amount);
 int get_token(struct token_buffer *s, struct token *out);
-int get_and_expect_token(struct token_buffer *s, struct token *out, enum token_type ty);
 int get_token_type(struct token_buffer *s, struct token *out, enum token_type ty);
 
 #endif
