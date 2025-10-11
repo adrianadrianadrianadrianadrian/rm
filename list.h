@@ -1,3 +1,10 @@
+#ifndef LIST_H
+#define LIST_H
+
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
+
 #define LIST_NAME(ty) list_##ty
 
 #define struct_list(ty)                                     \
@@ -28,4 +35,5 @@
         (l)->data[(l)->size] = item;                        \
         (l)->size += 1;                                     \
     } while (0)
-    
+
+#endif
