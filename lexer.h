@@ -1,7 +1,8 @@
-#ifndef TOKENIZER_H
-#define TOKENIZER_H
-#include "list.h"
+#ifndef LEXER_H
+#define LEXER_H
+
 #include <stdio.h>
+#include "utils.h"
 
 enum token_type {
     SEMICOLON = 1,

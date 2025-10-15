@@ -1,4 +1,4 @@
-#include "parser.h"
+#include "../ast.h"
 #include <assert.h>
 
 struct statement_slice {

@@ -3,7 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "utils.h"
-#include "tokenizer.h"
+#include "ast.h"
+#include "lexer.h"
 #include "parser.h"
 
 #define parser_t int (*)(struct token_buffer *, void *)
