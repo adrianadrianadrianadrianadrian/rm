@@ -2,7 +2,6 @@
 #define AST_H
 
 #include <math.h>
-#include "list.h"
 #include "utils.h"
 
 enum primitive_type {

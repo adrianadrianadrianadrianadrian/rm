@@ -2,7 +2,7 @@
 #include "parser.h"
 #include "ast.h"
 #include "lexer.h"
-#include "c_generation.h"
+#include "backends/c.c"
 
 int main(int argc, char **argv) {
     FILE *f = fopen(argv[1], "r");
