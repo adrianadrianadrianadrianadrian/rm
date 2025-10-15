@@ -1,5 +1,5 @@
-#include "parser.h"
-#include "list.h"
+#include "ast.h"
+#include "utils.h"
 #include <assert.h>
 #include "utils.h"
 
@@ -44,10 +44,32 @@ int get_scoped_variable_type(struct list_key_type_pair *scoped_variables,
 	return 0;
 }
 
+int find_struct_definition(struct global_context *c,
+                           struct list_char struct_name,
+                           struct type *out,
+                           struct error *err)
+{
+    for (size_t i = 0; i < c->data_types.size; i++) {
+        struct type this = c->data_types.data[i];
+        if (this.kind != TY_STRUCT) {
+            continue;
+        }
+
+        if (list_char_eq(&struct_name, this.name)) {
+            *out = this;
+            return 1;
+        }
+    }
+    
+    append_list_char_slice(&err->message, "Struct does not exist.");
+    return 0;
+}
+
 int infer_type(struct expression *e,
                struct list_key_type_pair *scoped_variables,
                struct global_context *c,
-               struct type *out)
+               struct type *out,
+               struct error *err)
 {
     switch (e->kind) {
         case LITERAL_EXPRESSION:
@@ -71,14 +93,7 @@ int infer_type(struct expression *e,
                 }
                 case LITERAL_STRUCT:
                 {
-                    *out = (struct type) {
-                        .kind = TY_STRUCT,
-                        .name = e->literal.struct_enum.name,
-                        .struct_type = (struct struct_type) {
-                            .predefined = 1,
-                        }
-                    };
-                    return 1;
+                    return find_struct_definition(c, *e->literal.struct_enum.name, out, err);
                 }
                 case LITERAL_ENUM:
                 {
@@ -102,24 +117,21 @@ int infer_type(struct expression *e,
         }
         case UNARY_EXPRESSION:
 		{
-			return infer_type(e->unary.expression, scoped_variables, c, out);
+			return infer_type(e->unary.expression, scoped_variables, c, out, err);
 		}
         case BINARY_EXPRESSION:
         {
             if (e->binary.binary_op == DOT_BINARY)
             {
                 struct type l_type = {0};
-                if (infer_type(e->binary.l, scoped_variables, c, &l_type))
+                if (infer_type(e->binary.l, scoped_variables, c, &l_type, err))
                 {
                     if (l_type.kind == TY_STRUCT)
                     {
                         assert(e->binary.r->kind == LITERAL_EXPRESSION);
-                        // TODO this doesn't seem right.. we're getting 0 pairs.
-                        printf("Struct is %d\n", (int)l_type.struct_type.pairs.size);
                         for (size_t i = 0; i < l_type.struct_type.pairs.size; i++) {
                             struct key_type_pair pair = l_type.struct_type.pairs.data[i];
                             if (list_char_eq(&pair.field_name, e->binary.r->literal.name)) {
-                                printf("Found it!!\n");
                                 *out = *pair.field_type;
                                 return 1;
                             }
@@ -147,7 +159,7 @@ int infer_type(struct expression *e,
         }
         case GROUP_EXPRESSION:
         {
-            return infer_type(e->grouped, scoped_variables, c, out);
+            return infer_type(e->grouped, scoped_variables, c, out, err);
         }
         case FUNCTION_EXPRESSION:
         {
@@ -214,7 +226,19 @@ int contextualize(struct list_statement *s,
                         struct function_type fn = current->type_declaration.type.function_type;
                         for (size_t i = 0; i < fn.params.size; i++)
                         {
-                            list_append(scoped_variables, fn.params.data[i]);
+                            struct key_type_pair param = fn.params.data[i];
+                            struct type *complete_type = malloc(sizeof(*complete_type));
+                            if (param.field_type->kind == TY_STRUCT) {
+                                if (find_struct_definition(global_context,
+                                                           *param.field_type->name,
+                                                           complete_type,
+                                                           error))
+                                {
+                                    param.field_type = complete_type;
+                                }
+                            }
+
+                            list_append(scoped_variables, param);
                         } 
                         
                         for (size_t i = 0; i < current->type_declaration.statements->size; i++)
@@ -232,7 +256,8 @@ int contextualize(struct list_statement *s,
                                     if (!infer_type(&self->binding_statement.value,
                                                    scoped_variables,
                                                    global_context,
-                                                   inferred_type))
+                                                   inferred_type,
+                                                   error))
                                     {
                                         append_list_char_slice(&error->message, "Type must be specified.");
                                         return 0;
