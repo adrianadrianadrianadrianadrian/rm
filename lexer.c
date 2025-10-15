@@ -1,5 +1,5 @@
 #include "list.h"
-#include "tokenizer.h"
+#include "lexer.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

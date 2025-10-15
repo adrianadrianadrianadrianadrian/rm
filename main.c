@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "parser.h"
-#include "tokenizer.h"
+#include "ast.h"
+#include "lexer.h"
 #include "c_generation.h"
 
 int main(int argc, char **argv) {

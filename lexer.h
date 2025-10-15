@@ -1,5 +1,6 @@
-#ifndef TOKENIZER_H
-#define TOKENIZER_H
+#ifndef LEXER_H
+#define LEXER_H
+
 #include "list.h"
 #include <stdio.h>
 
