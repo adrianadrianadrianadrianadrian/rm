@@ -8,27 +8,59 @@ struct global_context {
     struct list_type data_types;
 };
 
-typedef struct context {
+typedef struct scoped_variable {
+    struct list_char name;
+    struct type *defined_type;
+    struct type *inferred_type;
+} scoped_variable;
+
+struct_list(scoped_variable);
+
+struct binding_statement_context {
+    struct list_scoped_variable scoped_variables;
+    struct type inferred_type;
+    struct binding_statement *binding_statement;
+};
+
+struct return_statement_context {
+    struct expression *e;
+    struct type inferred_return_type;
+};
+
+struct type_declaration_statement_context {
+    struct type type;
+    struct list_statement_context *statements;
+};
+
+typedef struct statement_context {
+    enum statement_kind kind;
+    union {
+        struct binding_statement_context binding_statement;
+        struct return_statement_context return_statement;
+        struct type_declaration_statement_context type_declaration;
+    };
     struct global_context *global_context;
-    struct list_key_type_pair scoped_variables;
-    struct statement *self;
-} context;
+} statement_context;
+
+struct_list(statement_context);
 
 struct error {
     struct list_char message;
 };
 
-struct_list(context);
+struct type *get_type(struct scoped_variable *variable) {
+    return variable->defined_type != NULL ? variable->defined_type : variable->inferred_type;
+}
 
-int get_scoped_variable_type(struct list_key_type_pair *scoped_variables,
+int get_scoped_variable_type(struct list_scoped_variable *scoped_variables,
                              struct global_context *c,
 					         struct list_char ident_name,
 							 struct type *out)
 {
     for (size_t i = 0; i < scoped_variables->size; i++) {
-        struct key_type_pair pair = scoped_variables->data[i];
-        if (list_char_eq(&pair.field_name, &ident_name)) {
-            *out = *pair.field_type;
+        struct scoped_variable scoped = scoped_variables->data[i];
+        if (list_char_eq(&scoped.name, &ident_name)) {
+            *out = *get_type(&scoped);
             return 1;
         }
     }
@@ -65,8 +97,56 @@ int find_struct_definition(struct global_context *c,
     return 0;
 }
 
+int infer_field_type(struct struct_type s,
+                     struct expression *e,
+                     struct global_context *c,
+                     struct error *err,
+                     struct type *out)
+{
+    if (e->kind == LITERAL_EXPRESSION && e->literal.kind == LITERAL_NAME) {
+        for (size_t i = 0; i < s.pairs.size; i++) {
+            if (list_char_eq(e->literal.name, &s.pairs.data[i].field_name)) {
+                *out = *s.pairs.data[i].field_type;
+                return 1;
+            }
+        }
+        
+        append_list_char_slice(&err->message, "no type found.");
+        return 0;
+    }
+
+    if (e->kind == BINARY_EXPRESSION) {
+        if (e->binary.l->kind != LITERAL_EXPRESSION && e->binary.l->literal.kind != LITERAL_NAME) {
+            append_list_char_slice(&err->message, "Must be a valid field name");
+            return 0;
+        }
+        
+        for (size_t i = 0; i < s.pairs.size; i++) {
+            if (list_char_eq(e->binary.l->literal.name, &s.pairs.data[i].field_name)) {
+                if (s.pairs.data[i].field_type->kind != TY_STRUCT) {
+                    append_list_char_slice(&err->message, "Cannot index into a primitive type");
+                    return 0;
+                }
+
+                struct type *field_type = s.pairs.data[i].field_type;
+                struct type complete_type = {0};
+                if (find_struct_definition(c, *field_type->name, &complete_type, err))
+                {
+                    return infer_field_type(complete_type.struct_type, e->binary.r, c, err, out);
+                }
+                
+                append_list_char_slice(&err->message, "Unable to infer field type");
+                return 0;
+            } 
+        }
+    }
+
+    append_list_char_slice(&err->message, "Not sure what happend");
+    return 0;
+}
+
 int infer_type(struct expression *e,
-               struct list_key_type_pair *scoped_variables,
+               struct list_scoped_variable *scoped_variables,
                struct global_context *c,
                struct type *out,
                struct error *err)
@@ -128,14 +208,7 @@ int infer_type(struct expression *e,
                 {
                     if (l_type.kind == TY_STRUCT)
                     {
-                        assert(e->binary.r->kind == LITERAL_EXPRESSION);
-                        for (size_t i = 0; i < l_type.struct_type.pairs.size; i++) {
-                            struct key_type_pair pair = l_type.struct_type.pairs.data[i];
-                            if (list_char_eq(&pair.field_name, e->binary.r->literal.name)) {
-                                *out = *pair.field_type;
-                                return 1;
-                            }
-                        }
+                        return infer_field_type(l_type.struct_type, e->binary.r, c, err, out);
                     }
                 }
             } else {
@@ -171,9 +244,9 @@ int infer_type(struct expression *e,
             }
 
             for (size_t i = 0; i < scoped_variables->size; i++) {
-                struct type *fn = scoped_variables->data[i].field_type;
+                struct type *fn = get_type(&scoped_variables->data[i]);
                 if (fn->kind == TY_FUNCTION) {
-                    if (list_char_eq(e->function.function_name, &scoped_variables->data[i].field_name)) {
+                    if (list_char_eq(e->function.function_name, &scoped_variables->data[i].name)) {
                         *out = *fn;
                         return 1;
                     }
@@ -184,147 +257,316 @@ int infer_type(struct expression *e,
     }
 }
 
-int contextualize(struct list_statement *s,
-                  struct list_context *out,
-                  struct error *error)
+int include_statement_global_context(struct statement *s,
+                                     struct global_context *gc,
+                                     struct error *error)
+{
+    return 1;
+}
+
+int type_declaration_global_context(struct statement *s,
+                                    struct global_context *gc,
+                                    struct error *error)
+{
+    switch (s->kind) {
+        case TY_STRUCT:
+        case TY_ENUM:
+        {
+            list_append(&gc->data_types, s->type_declaration.type);
+            break;
+        }
+        case TY_FUNCTION:
+        {
+            list_append(&gc->fn_types, s->type_declaration.type);
+            break;
+        }
+        default:
+            return 1;
+    }
+
+    return 1;
+}
+
+int generate_global_context(struct list_statement *s,
+                            struct global_context *out,
+                            struct error *error)
 {
     if (s->size == 0) {
         return 0;
     }
 
-    *out = list_create(context, s->size);
-    struct global_context *global_context = malloc(sizeof(*global_context));
-    *global_context = (struct global_context) {
-        .fn_types = list_create(type, 100),
-        .data_types = list_create(type, 100)
-    };
-
     for (size_t i = 0; i < s->size; i++) {
         struct statement *current = &s->data[i];
         switch (current->kind) {
             case TYPE_DECLARATION_STATEMENT:
-            {
-                switch (current->type_declaration.type.kind) {
-                    case TY_STRUCT:
-                    case TY_ENUM:
-                    {
-                        list_append(&global_context->data_types, current->type_declaration.type);
-                        break;
-                    }
-                    case TY_FUNCTION:
-                    {
-                        struct context fn_context = (struct context) {
-                            .global_context = global_context,
-                            .scoped_variables = list_create(key_type_pair, 0),
-                            .self = current
-                        };
-                        list_append(out, fn_context);
-                        list_append(&global_context->fn_types, current->type_declaration.type);
-                        struct list_key_type_pair *scoped_variables = malloc(sizeof(*scoped_variables));
-                        *scoped_variables = list_create(key_type_pair, 10);
-
-                        struct function_type fn = current->type_declaration.type.function_type;
-                        for (size_t i = 0; i < fn.params.size; i++)
-                        {
-                            struct key_type_pair param = fn.params.data[i];
-                            struct type *complete_type = malloc(sizeof(*complete_type));
-                            if (param.field_type->kind == TY_STRUCT) {
-                                if (find_struct_definition(global_context,
-                                                           *param.field_type->name,
-                                                           complete_type,
-                                                           error))
-                                {
-                                    param.field_type = complete_type;
-                                }
-                            }
-
-                            list_append(scoped_variables, param);
-                        } 
-                        
-                        for (size_t i = 0; i < current->type_declaration.statements->size; i++)
-                        {
-                            struct statement *self = &current->type_declaration.statements->data[i];
-                            if (self->kind == BINDING_STATEMENT) {
-                                if (self->binding_statement.has_type) {
-                                    struct key_type_pair pair = (struct key_type_pair) {
-                                        .field_name = self->binding_statement.variable_name,
-                                        .field_type = &self->binding_statement.variable_type
-                                    };
-                                    list_append(scoped_variables, pair);
-                                } else {
-                                    struct type *inferred_type = malloc(sizeof(*inferred_type));
-                                    if (!infer_type(&self->binding_statement.value,
-                                                   scoped_variables,
-                                                   global_context,
-                                                   inferred_type,
-                                                   error))
-                                    {
-                                        append_list_char_slice(&error->message, "Type must be specified.");
-                                        return 0;
-                                    }
-                                    struct key_type_pair pair = (struct key_type_pair) {
-                                        .field_name = self->binding_statement.variable_name,
-                                        .field_type = inferred_type
-                                    };
-                                    list_append(scoped_variables, pair);
-                                }
-                            }
-
-                            struct key_type_pair *copy = malloc(sizeof(*copy) * scoped_variables->size);
-                            memcpy(copy, scoped_variables->data, scoped_variables->size * sizeof(key_type_pair));
-                            
-                            struct context c = (struct context) {
-                                .self = self,
-                                .scoped_variables = (struct list_key_type_pair) {
-                                    .data = copy,   
-                                    .size = scoped_variables->size,
-                                    .capacity = scoped_variables->capacity
-                                },
-                                .global_context = global_context
-                            };
-                            list_append(out, c);
-                        }
-                        break;
-                    }
-                    case TY_PRIMITIVE:
-                        break;
-                }
-                 break;
-            }
-            case INCLUDE_STATEMENT:
-            {
-                // includes
+                if (!type_declaration_global_context(current, out, error)) return 0;
                 break;
-            }
-            case BINDING_STATEMENT:
-            case IF_STATEMENT:
-            case RETURN_STATEMENT:
-            case BLOCK_STATEMENT:
-            case ACTION_STATEMENT:
-            case WHILE_LOOP_STATEMENT:
-            case BREAK_STATEMENT:
-            case SWITCH_STATEMENT:
-            {
-                fprintf(stderr, "Not allowed as top level");
-                exit(-1);
-            }
+            case INCLUDE_STATEMENT:
+                if (!include_statement_global_context(current, out, error)) return 0;
+                break;
+            default:
+                break;
         }
     }
 
     return 1;
 }
 
-void debug_statement(struct statement *s)
+struct list_scoped_variable copy_scoped_variables(struct list_scoped_variable *scoped)
+{
+    struct scoped_variable *data = malloc(sizeof(*data) * scoped->size);
+    return (struct list_scoped_variable) {
+        .data = data,
+        .size = scoped->size,
+        .capacity = scoped->capacity
+    };
+}
+
+void add_scoped_variable(struct statement_context *c, struct list_scoped_variable *scoped_variables)
+{
+    if (c->kind != BINDING_STATEMENT) {
+        return;
+    }
+    
+    struct scoped_variable var = (struct scoped_variable) {
+        .name = c->binding_statement.binding_statement->variable_name,
+        .defined_type = c->binding_statement.binding_statement->has_type
+            ? &c->binding_statement.binding_statement->variable_type
+            : NULL,
+        .inferred_type = &c->binding_statement.inferred_type
+    };
+    
+    list_append(scoped_variables, var);
+}
+
+int contextualise_statement(struct statement *s,
+                            struct global_context *gc,
+                            struct list_scoped_variable *scoped_variables,
+                            struct error *error,
+                            struct statement_context *out)
 {
     switch (s->kind) {
         case BINDING_STATEMENT:
         {
-            printf("statement::binding::%s\n", s->binding_statement.variable_name.data);
+            struct type inferred_type = {0};
+            if (!infer_type(&s->binding_statement.value, scoped_variables, gc, &inferred_type, error)) return 0;
+            *out = (struct statement_context) {
+                .kind = s->kind,
+                .binding_statement = (struct binding_statement_context) {
+                    .binding_statement = &s->binding_statement,
+                    .inferred_type = inferred_type,
+                    .scoped_variables = copy_scoped_variables(scoped_variables)
+                },
+                .global_context = gc
+            };
+            return 1;
+        }
+        case RETURN_STATEMENT:
+        {
+            struct type inferred_type = {0};
+            if (!infer_type(&s->expression, scoped_variables, gc, &inferred_type, error)) return 0;
+            *out = (struct statement_context) {
+                .kind = s->kind,
+                .return_statement = (struct return_statement_context) {
+                    .e = &s->expression,
+                    .inferred_return_type = inferred_type
+                },
+                .global_context = gc
+            };
+            return 1;
+        }
+        case TYPE_DECLARATION_STATEMENT:
+        {
+            switch (s->type_declaration.type.kind) {
+                case TY_FUNCTION:
+                {
+                    struct list_scoped_variable *scoped_variables = malloc(sizeof(*scoped_variables));
+                    *scoped_variables = list_create(scoped_variable, 10);
+                    struct function_type fn = s->type_declaration.type.function_type;
+                    struct list_statement_context *statements = malloc(sizeof(*statements));
+                    *statements = list_create(statement_context, s->type_declaration.statements->size);
+                    
+                    for (size_t i = 0; i < fn.params.size; i++) {
+                        struct scoped_variable param = (struct scoped_variable) {
+                            .name = fn.params.data[i].field_name,
+                            .defined_type = fn.params.data[i].field_type,
+                            .inferred_type = NULL
+                        };
+                        list_append(scoped_variables, param);
+                    }
+                    
+                    for (size_t i = 0; i < s->type_declaration.statements->size; i++) {
+                        struct statement_context c = {0};
+                        if (!contextualise_statement(
+                                &s->type_declaration.statements->data[i],
+                                gc,
+                                scoped_variables,
+                                error,
+                                &c)) 
+                        {
+                            return 0;
+                        }
+                        list_append(statements, c);
+                        add_scoped_variable(&c, scoped_variables);
+                    }
+                    
+                    *out = (struct statement_context) {
+                        .kind = s->kind,
+                        .type_declaration = (struct type_declaration_statement_context) {
+                            .type = s->type_declaration.type,
+                            .statements = statements
+                        },
+                        .global_context = gc
+                    };
+                    break;
+                }
+                case TY_PRIMITIVE:
+                case TY_STRUCT:
+                case TY_ENUM:
+                {
+                    *out = (struct statement_context) {
+                        .kind = s->kind,
+                        .type_declaration = (struct type_declaration_statement_context) {
+                            .type = s->type_declaration.type,
+                            .statements = NULL
+                        },
+                        .global_context = gc
+                    };
+                    break;
+                }
+                default:
+                    UNREACHABLE("type_declaration type not handled");
+            }
+            return 1;
+        }
+        case BLOCK_STATEMENT:
+        case IF_STATEMENT:
+        case ACTION_STATEMENT:
+        case WHILE_LOOP_STATEMENT:
+        case BREAK_STATEMENT:
+        case INCLUDE_STATEMENT:
+        case SWITCH_STATEMENT:
+            break;
+        default:
+            UNREACHABLE("statement kind not handled");
+    }
+
+    return 1;
+}
+
+int contextualise(struct list_statement *s,
+                  struct list_statement_context *out,
+                  struct error *error)
+{
+    if (s->size == 0) {
+        return 0;
+    }
+
+    *out = list_create(statement_context, s->size);
+    struct global_context *global_context = malloc(sizeof(*global_context));
+    *global_context = (struct global_context) {
+        .fn_types = list_create(type, 100),
+        .data_types = list_create(type, 100)
+    };
+
+    if (!generate_global_context(s, global_context, error)) return 0;
+
+    for (size_t i = 0; i < s->size; i++) {
+        struct statement_context c = {0};
+        if (!contextualise_statement(&s->data[i], global_context, NULL, error, &c)) return 0;
+        list_append(out, c);
+    }
+
+    return 1;
+}
+
+void print_type(struct type *ty) {
+    if (ty == NULL) {
+        return;
+    }
+
+    switch (ty->kind) {
+        case TY_PRIMITIVE:
+        {
+            switch (ty->primitive_type) {
+                case UNIT:
+                    printf("void");
+                    return;
+                case BOOL:
+                    printf("bool");
+                    return;
+                case U8:
+                    printf("u8");
+                    return;
+                case I8:
+                    printf("i8");
+                    return;
+                case I16:
+                    printf("i16");
+                    return;
+                case U16:
+                    printf("u16");
+                    return;
+                case I32:
+                    printf("132");
+                    return;
+                case U32:
+                    printf("u32");
+                    return;
+                case I64:
+                    printf("164");
+                    return;
+                case U64:
+                    printf("u64");
+                    return;
+                case USIZE:
+                    printf("usize");
+                    return;
+                case F32:
+                    printf("f32");
+                    return;
+                case F64:
+                    printf("f64");
+                    return;
+            }
+        }
+        case TY_STRUCT:
+        {
+            printf("struct %s", ty->name->data);
+            return;
+        }
+        case TY_ENUM:
+        {
+            printf("enum %s", ty->name->data);
+            return;
+        }
+        case TY_FUNCTION:
+        {
+            printf("fn(");
+            for (size_t i = 0; i < ty->function_type.params.size; i++) {
+                print_type(ty->function_type.params.data[i].field_type);
+                if (i < ty->function_type.params.size - 1) {
+                    printf(", ");
+                }
+            }
+            printf(") -> ");
+            print_type(ty->function_type.return_type);
+            return;
+        }
+    }
+}
+
+void debug_statement(struct statement *s, struct type *defined_type, struct type *inferred_type)
+{
+    switch (s->kind) {
+        case BINDING_STATEMENT:
+        {
+            printf("statement::binding %s", s->binding_statement.variable_name.data);
             break;
         }
         case TYPE_DECLARATION_STATEMENT:
         {
-            printf("statement::type_declaration::%s\n", s->type_declaration.type.name->data);
+            printf("statement::type_declaration %s", s->type_declaration.type.name->data);
             break;
         }
         case IF_STATEMENT:
@@ -335,22 +577,49 @@ void debug_statement(struct statement *s)
         case BREAK_STATEMENT:
         case INCLUDE_STATEMENT:
         case SWITCH_STATEMENT:
-            printf("statement::kind::%d\n", s->kind);
+            printf("statement::kind %d", s->kind);
             break;
+    }
+    
+    printf(":");
+    print_type(defined_type);
+    printf(":");
+    print_type(inferred_type);
+}
+
+void show_global_context(struct global_context *gc) {
+    printf("\nfunctions [");
+    for (size_t i = 0; i < gc->fn_types.size; i++) {
+        printf("%s", gc->fn_types.data[i].name->data);
+        if (i < gc->fn_types.size - 1) {
+           printf(", "); 
+        }
+    }
+    printf("]\n");
+    printf("datatypes [");
+    for (size_t i = 0; i < gc->data_types.size; i++) {
+        printf("%s", gc->data_types.data[i].name->data);
+        if (i < gc->data_types.size - 1) {
+           printf(", "); 
+        }
     }
 }
 
-void debug_context(struct context *c) {
-    debug_statement(c->self);
-    printf("functions [\n");
-    for (size_t i = 0; i < c->global_context->fn_types.size; i++) {
-        printf("\t%s\n", c->global_context->fn_types.data[i].name->data);
+void show_statement_context(struct statement_context *s)
+{
+    show_global_context(s->global_context);
+    switch (s->kind) {
+        case BINDING_STATEMENT:
+        {
+            TODO("print binding statement");
+            break;
+        }
+        case TYPE_DECLARATION_STATEMENT:
+        {
+            TODO("print type declaration statement");
+            break;
+        }
+        default:
+            break;
     }
-    printf("]\n");
-    printf("variables [\n");
-    for (size_t i = 0; i < c->scoped_variables.size; i++) {
-        printf("\t%s:%d\n", c->scoped_variables.data[i].field_name.data, c->scoped_variables.data[i].field_type->kind);
-    }
-    printf("]\n");
-    printf("\n");
 }
