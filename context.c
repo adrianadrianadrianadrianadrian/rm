@@ -151,6 +151,36 @@ int infer_field_type(struct struct_type s,
     return 0;
 }
 
+int infer_function_type(struct function_type *matched_fn,
+                        size_t value_count,
+                        struct type *out)
+{
+    if (matched_fn->params.size < value_count || value_count == 0) {
+        return 0;
+    }
+    
+    if (matched_fn->params.size == value_count) {
+        *out = *matched_fn->return_type;
+        return 1;
+    }
+    
+    struct type *inferred = malloc(sizeof(*inferred));
+    struct list_key_type_pair params = list_create(key_type_pair, matched_fn->params.size - value_count);
+    for (size_t i = value_count; i < matched_fn->params.size; i++) {
+        list_append(&params, matched_fn->params.data[i]);
+    }
+
+    *out = (struct type) {
+        .kind = TY_FUNCTION,
+        .function_type = (struct function_type) {
+            .params = params,
+            .return_type = matched_fn->return_type
+        }
+    };
+    return 1;
+}
+
+
 int infer_type(struct expression *e,
                struct list_scoped_variable *scoped_variables,
                struct global_context *c,
@@ -247,29 +277,7 @@ int infer_type(struct expression *e,
             for (size_t i = 0; i < c->fn_types.size; i++) {
                 struct function_type global_fn = c->fn_types.data[i].function_type;
                 if (list_char_eq(e->function.function_name, c->fn_types.data[i].name)) {
-                    if (global_fn.params.size < value_count || value_count == 0) {
-                        return 0;
-                    }
-                    
-                    if (global_fn.params.size == value_count) {
-                        *out = *global_fn.return_type;
-                        return 1;
-                    }
-                    
-                    struct type *inferred = malloc(sizeof(*inferred));
-                    struct list_key_type_pair params = list_create(key_type_pair, global_fn.params.size - value_count);
-                    for (size_t i = value_count; i < global_fn.params.size; i++) {
-                        list_append(&params, global_fn.params.data[i]);
-                    }
-    
-                    *out = (struct type) {
-                        .kind = TY_FUNCTION,
-                        .function_type = (struct function_type) {
-                            .params = params,
-                            .return_type = global_fn.return_type
-                        }
-                    };
-                    return 1;
+                    return infer_function_type(&global_fn, value_count, out);
                 }
             }
 
@@ -277,9 +285,7 @@ int infer_type(struct expression *e,
                 struct type *fn = get_type(&scoped_variables->data[i]);
                 if (fn->kind == TY_FUNCTION) {
                     if (list_char_eq(e->function.function_name, &scoped_variables->data[i].name)) {
-                        // TODO: check variable type, if it's a fn mostly..
-                        *out = *fn;
-                        return 1;
+                        return infer_function_type(&fn->function_type, value_count, out);
                     }
                 }
             }
