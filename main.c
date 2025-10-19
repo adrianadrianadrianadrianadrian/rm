@@ -27,6 +27,7 @@ int main(int argc, char **argv) {
 
     for (size_t i = 0; i < c.size; i++) {
         show_statement_context(&c.data[i]);
+        printf("\n");
     }
     
     //generate_c(file);
