@@ -30,6 +30,5 @@ int main(int argc, char **argv) {
         printf("\n");
     }
     
-    //generate_c(file);
     return 0;
 }
