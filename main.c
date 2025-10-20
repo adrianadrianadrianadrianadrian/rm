@@ -3,6 +3,7 @@
 #include "ast.h"
 #include "lexer.h"
 #include "context.c"
+#include "type_checking.c"
 
 int main(int argc, char **argv) {
     FILE *f = fopen(argv[1], "r");
@@ -15,7 +16,7 @@ int main(int argc, char **argv) {
     }
 
     struct list_statement_context c = list_create(statement_context, 100);
-    struct error err = (struct error) {
+    struct context_error err = (struct context_error) {
         .message = list_create(char, 100)
     };
 
@@ -24,10 +25,12 @@ int main(int argc, char **argv) {
         printf("Error: %s\n", err.message.data);
         exit(-1);
     }
-
-    for (size_t i = 0; i < c.size; i++) {
-        show_statement_context(&c.data[i]);
-        printf("\n");
+    
+    struct type_check_error type_error = {0};
+    int type_check_result = type_check(c, &type_error);
+    if (!type_check_result) {
+        printf("Error: %s\n", type_error.error_message.data);
+        exit(-1);
     }
     
     return 0;
