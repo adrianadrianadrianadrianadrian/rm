@@ -32,12 +32,19 @@ struct type_declaration_statement_context {
     struct list_statement_context *statements;
 };
 
+struct while_loop_statement_context {
+    struct expression condition;
+    struct statement_context *do_statement;
+};
+
 typedef struct statement_context {
     enum statement_kind kind;
     union {
         struct binding_statement_context binding_statement;
         struct return_statement_context return_statement;
         struct type_declaration_statement_context type_declaration;
+        struct list_statement_context *block_statements;
+        struct while_loop_statement_context while_loop_statement;
     };
     struct global_context *global_context;
     struct list_scoped_variable scoped_variables;
@@ -350,7 +357,11 @@ int generate_global_context(struct list_statement *s,
 
 struct list_scoped_variable copy_scoped_variables(struct list_scoped_variable *scoped)
 {
-    struct scoped_variable *data = malloc(sizeof(*data) * scoped->size);
+    if (scoped->size == 0) {
+        return list_create(scoped_variable, scoped->capacity);
+    }
+
+    struct scoped_variable *data = malloc(sizeof(*data) * scoped->capacity);
     memcpy(data, scoped->data, scoped->size * sizeof(*data));
     return (struct list_scoped_variable) {
         .data = data,
@@ -364,7 +375,7 @@ void add_scoped_variable(struct statement_context *c, struct list_scoped_variabl
     if (c->kind != BINDING_STATEMENT) {
         return;
     }
-    
+
     struct scoped_variable var = (struct scoped_variable) {
         .name = c->binding_statement.binding_statement->variable_name,
         .defined_type = c->binding_statement.binding_statement->has_type
@@ -388,7 +399,6 @@ int contextualise_statement(struct statement *s,
             struct type *inferred_type = malloc(sizeof(*inferred_type));
             // TODO: pending full type inference
             infer_type(&s->binding_statement.value, scoped_variables, global_context, inferred_type, error);
-            
             *out = (struct statement_context) {
                 .kind = s->kind,
                 .binding_statement = (struct binding_statement_context) {
@@ -421,8 +431,7 @@ int contextualise_statement(struct statement *s,
             switch (s->type_declaration.type.kind) {
                 case TY_FUNCTION:
                 {
-                    struct list_scoped_variable *scoped_variables = malloc(sizeof(*scoped_variables));
-                    *scoped_variables = list_create(scoped_variable, 10);
+                    struct list_scoped_variable fn_scoped_variables = copy_scoped_variables(scoped_variables);
                     struct function_type fn = s->type_declaration.type.function_type;
                     struct list_statement_context *statements = malloc(sizeof(*statements));
                     *statements = list_create(statement_context, s->type_declaration.statements->size);
@@ -433,7 +442,7 @@ int contextualise_statement(struct statement *s,
                             .defined_type = fn.params.data[i].field_type,
                             .inferred_type = NULL
                         };
-                        list_append(scoped_variables, param);
+                        list_append(&fn_scoped_variables, param);
                     }
                     
                     for (size_t i = 0; i < s->type_declaration.statements->size; i++) {
@@ -441,14 +450,14 @@ int contextualise_statement(struct statement *s,
                         if (!contextualise_statement(
                                 &s->type_declaration.statements->data[i],
                                 global_context,
-                                scoped_variables,
+                                &fn_scoped_variables,
                                 error,
                                 &c)) 
                         {
                             return 0;
                         }
                         list_append(statements, c);
-                        add_scoped_variable(&c, scoped_variables);
+                        add_scoped_variable(&c, &fn_scoped_variables);
                     }
                     
                     *out = (struct statement_context) {
@@ -458,7 +467,7 @@ int contextualise_statement(struct statement *s,
                             .statements = statements
                         },
                         .global_context = global_context,
-                        .scoped_variables = copy_scoped_variables(scoped_variables)
+                        .scoped_variables = copy_scoped_variables(&fn_scoped_variables)
                     };
                     break;
                 }
@@ -483,10 +492,69 @@ int contextualise_statement(struct statement *s,
             return 1;
         }
         case BLOCK_STATEMENT:
+        {
+            struct list_scoped_variable block_scoped_variables = copy_scoped_variables(scoped_variables);
+            struct list_statement_context *statements = malloc(sizeof(*statements));
+            *statements = list_create(statement_context, s->statements->size);
+
+            for (size_t i = 0; i < s->statements->size; i++) {
+                struct statement_context c = {0};
+                if (!contextualise_statement(
+                        &s->statements->data[i],
+                        global_context,
+                        &block_scoped_variables,
+                        error,
+                        &c)) 
+                {
+                    return 0;
+                }
+                list_append(statements, c);
+                add_scoped_variable(&c, &block_scoped_variables);
+            }
+
+            *out = (struct statement_context) {
+                .kind = s->kind,
+                .block_statements = statements,
+                .global_context = global_context,
+                .scoped_variables = copy_scoped_variables(scoped_variables)
+            };
+            return 1;
+        }
         case IF_STATEMENT:
         case ACTION_STATEMENT:
         case WHILE_LOOP_STATEMENT:
+        {
+            struct statement_context *do_statement = malloc(sizeof(*do_statement));
+            if (!contextualise_statement(
+                s->while_loop_statement.do_statement,
+                global_context,
+                scoped_variables,
+                error,
+                do_statement))
+            {
+                return 0;
+            }
+
+            *out = (struct statement_context) {
+                .kind = s->kind,
+                .while_loop_statement = (struct while_loop_statement_context) {
+                    .condition = s->while_loop_statement.condition,
+                    .do_statement = do_statement
+                },
+                .scoped_variables = copy_scoped_variables(scoped_variables),
+                .global_context = global_context
+            };
+            return 1;
+        }
         case BREAK_STATEMENT:
+        {
+            *out = (struct statement_context) {
+                .kind = s->kind,
+                .scoped_variables = copy_scoped_variables(scoped_variables),
+                .global_context = global_context
+            };
+            return 1;
+        }
         case INCLUDE_STATEMENT:
         case SWITCH_STATEMENT:
             break;
@@ -513,10 +581,11 @@ int contextualise(struct list_statement *s,
     };
 
     if (!generate_global_context(s, global_context, error)) return 0;
+    struct list_scoped_variable scoped_variables = list_create(scoped_variable, 10);
 
     for (size_t i = 0; i < s->size; i++) {
         struct statement_context c = {0};
-        if (!contextualise_statement(&s->data[i], global_context, NULL, error, &c)) return 0;
+        if (!contextualise_statement(&s->data[i], global_context, &scoped_variables, error, &c)) return 0;
         list_append(out, c);
     }
 
@@ -678,6 +747,29 @@ void show_statement_context(struct statement_context *s)
         case RETURN_STATEMENT:
         {
             printf("return_statement,%d", s->return_statement.inferred_return_type->kind);
+            show_scoped_variables(&s->scoped_variables);
+            break;
+        }
+        case WHILE_LOOP_STATEMENT:
+        {
+            printf("while_statement");
+            show_scoped_variables(&s->scoped_variables);
+            printf("\n");
+            show_statement_context(s->while_loop_statement.do_statement);
+            break;
+        }
+        case BLOCK_STATEMENT:
+        {
+            printf("block_statement");
+            for (size_t i = 0; i < s->block_statements->size; i++) {
+                printf("\n");
+                show_statement_context(&s->block_statements->data[i]);
+            }
+            break;
+        }
+        case BREAK_STATEMENT:
+        {
+            printf("break_statement");
             show_scoped_variables(&s->scoped_variables);
         }
         default:
