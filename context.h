@@ -27,6 +27,11 @@ struct return_statement_context {
     struct type *inferred_return_type;
 };
 
+struct action_statement_context {
+    struct expression *e;
+    struct type *inferred_expression_type;
+};
+
 struct type_declaration_statement_context {
     struct type type;
     struct list_statement_context *statements;
@@ -53,6 +58,7 @@ typedef struct statement_context {
         struct while_loop_statement_context while_loop_statement;
         struct if_statement_context if_statement_context;
         struct include_statement include_statement;
+        struct action_statement_context action_statement_context;
     };
     struct global_context *global_context;
     struct list_scoped_variable scoped_variables;
@@ -64,8 +70,13 @@ struct context_error {
     struct list_char message;
 };
 
+struct rm_program {
+    struct global_context global_context;
+    struct list_statement_context statements;
+};
+
 int contextualise(struct list_statement *s,
-                  struct list_statement_context *out,
+                  struct rm_program *out,
                   struct context_error *error);
 
 #endif

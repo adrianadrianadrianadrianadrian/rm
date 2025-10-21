@@ -1110,7 +1110,7 @@ int parse_statement(struct token_buffer *s, struct statement *out) {
         || try_parse(s, out, (parser_t)parse_switch_statement);
 }
 
-int parse_rm_file(struct token_buffer *s, struct rm_file *out) {
+int parse_rm_file(struct token_buffer *s, struct list_statement *out) {
     struct list_statement statements = list_create(statement, 10);
 
     for (;;) {
@@ -1122,9 +1122,6 @@ int parse_rm_file(struct token_buffer *s, struct rm_file *out) {
         }
     }
 
-    *out = (struct rm_file) {
-        .statements = statements
-    };
-
+    *out = statements;
     return 1;
 }

@@ -296,8 +296,4 @@ typedef struct statement {
 
 struct_list(statement);
 
-struct rm_file {
-    struct list_statement statements;
-};
-
 #endif

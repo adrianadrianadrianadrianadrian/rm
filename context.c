@@ -1,4 +1,3 @@
-// TODO: better error reporting
 #include "ast.h"
 #include "utils.h"
 #include <assert.h>
@@ -512,10 +511,16 @@ int contextualise_statement(struct statement *s,
         }
         case ACTION_STATEMENT:
         {
+            struct type *inferred_type = malloc(sizeof(*inferred_type));
+            infer_type(&s->expression, scoped_variables, global_context, inferred_type, context_error);
             *out = (struct statement_context) {
                 .kind = s->kind,
                 .global_context = global_context,
-                .scoped_variables = copy_scoped_variables(scoped_variables)
+                .scoped_variables = copy_scoped_variables(scoped_variables),
+                .action_statement_context = (struct action_statement_context) {
+                    .e = &s->expression,
+                    .inferred_expression_type = inferred_type
+                }
             };
             return 1;
         }
@@ -573,32 +578,33 @@ int contextualise_statement(struct statement *s,
 }
 
 int contextualise(struct list_statement *s,
-                  struct list_statement_context *out,
+                  struct rm_program *out,
                   struct context_error *context_error)
 {
     if (s->size == 0) {
         return 0;
     }
 
-    *out = list_create(statement_context, s->size);
-    struct global_context *global_context = malloc(sizeof(*global_context));
-    *global_context = (struct global_context) {
-        .fn_types = list_create(type, 100),
-        .data_types = list_create(type, 100)
+    *out = (struct rm_program) {
+        .global_context = (struct global_context) {
+            .fn_types = list_create(type, 100),
+            .data_types = list_create(type, 100)
+        },
+        .statements = list_create(statement_context, s->size)
     };
 
-    if (!generate_global_context(s, global_context, context_error)) return 0;
+    if (!generate_global_context(s, &out->global_context, context_error)) return 0;
     struct list_scoped_variable scoped_variables = list_create(scoped_variable, 10);
 
     for (size_t i = 0; i < s->size; i++) {
         struct statement_context c = {0};
-        if (!contextualise_statement(&s->data[i], global_context, &scoped_variables, context_error, &c)) return 0;
-        list_append(out, c);
+        if (!contextualise_statement(&s->data[i], &out->global_context, &scoped_variables, context_error, &c)) return 0;
+        list_append(&out->statements, c);
     }
     
     #ifdef DEBUG_CONTEXT
-        for (size_t i = 0; i < out->size; i++) {
-            show_statement_context(&out->data[i]);
+        for (size_t i = 0; i < out->statements.size; i++) {
+            show_statement_context(&out->statements.data[i]);
             printf("\n");
         }
     #endif
