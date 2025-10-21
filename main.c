@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
         printf("Error: %s\n", type_error.error_message.data);
         exit(-1);
     }
-    
+
     generate_c(&program);
     return 0;
 }

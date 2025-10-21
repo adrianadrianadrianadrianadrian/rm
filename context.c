@@ -63,6 +63,27 @@ int find_struct_definition(struct global_context *c,
     return 0;
 }
 
+int find_enum_definition(struct global_context *c,
+                           struct list_char struct_name,
+                           struct type *out,
+                           struct context_error *err)
+{
+    for (size_t i = 0; i < c->data_types.size; i++) {
+        struct type this = c->data_types.data[i];
+        if (this.kind != TY_ENUM) {
+            continue;
+        }
+
+        if (list_char_eq(&struct_name, this.name)) {
+            *out = this;
+            return 1;
+        }
+    }
+    
+    append_list_char_slice(&err->message, "Struct does not exist.");
+    return 0;
+}
+
 int infer_field_type(struct struct_type s,
                      struct expression *e,
                      struct global_context *c,
@@ -173,14 +194,7 @@ int infer_type(struct expression *e,
                 }
                 case LITERAL_ENUM:
                 {
-                    *out = (struct type) {
-                        .kind = TY_ENUM,
-                        .name = e->literal.struct_enum.name,
-                        .struct_type = (struct struct_type) {
-                            .predefined = 1,
-                        }
-                    };
-                    return 1;
+                    return find_struct_definition(c, *e->literal.struct_enum.name, out, err);
                 }
                 case LITERAL_STR:
                 case LITERAL_NUMERIC:
@@ -355,7 +369,10 @@ int contextualise_statement(struct statement *s,
         case BINDING_STATEMENT:
         {
             struct type *inferred_type = malloc(sizeof(*inferred_type));
-            infer_type(&s->binding_statement.value, scoped_variables, global_context, inferred_type, context_error);
+            if (!infer_type(&s->binding_statement.value, scoped_variables, global_context, inferred_type, context_error))
+            {
+                inferred_type = NULL;
+            }
             *out = (struct statement_context) {
                 .kind = s->kind,
                 .binding_statement = (struct binding_statement_context) {
@@ -370,7 +387,10 @@ int contextualise_statement(struct statement *s,
         case RETURN_STATEMENT:
         {
             struct type *inferred_type = malloc(sizeof(*inferred_type));
-            infer_type(&s->expression, scoped_variables, global_context, inferred_type, context_error);
+            if (!infer_type(&s->expression, scoped_variables, global_context, inferred_type, context_error))
+            {
+                inferred_type = NULL;
+            }
             *out = (struct statement_context) {
                 .kind = s->kind,
                 .return_statement = (struct return_statement_context) {

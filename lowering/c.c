@@ -3,11 +3,6 @@
 #include <assert.h>
 #include "c.h"
 
-struct statement_slice {
-	struct statement *statements;
-	size_t len;
-};
-
 void write_type(struct type *ty, FILE *file);
 
 void write_primitive_type(struct type *ty, FILE *file) {
