@@ -43,7 +43,7 @@ int get_scoped_variable_type(struct list_scoped_variable *scoped_variables,
 }
 
 int find_struct_definition(struct global_context *c,
-                           struct list_char struct_name,
+                           struct list_char *struct_name,
                            struct type *out,
                            struct context_error *err)
 {
@@ -53,7 +53,7 @@ int find_struct_definition(struct global_context *c,
             continue;
         }
 
-        if (list_char_eq(&struct_name, this.name)) {
+        if (list_char_eq(struct_name, this.name)) {
             *out = this;
             return 1;
         }
@@ -117,7 +117,7 @@ int infer_field_type(struct struct_type s,
 
                 struct type *field_type = s.pairs.data[i].field_type;
                 struct type complete_type = {0};
-                if (find_struct_definition(c, *field_type->name, &complete_type, err))
+                if (find_struct_definition(c, field_type->name, &complete_type, err))
                 {
                     return infer_field_type(complete_type.struct_type, e->binary.r, c, err, out);
                 }
@@ -190,11 +190,11 @@ int infer_type(struct expression *e,
                 }
                 case LITERAL_STRUCT:
                 {
-                    return find_struct_definition(c, *e->literal.struct_enum.name, out, err);
+                    return find_struct_definition(c, e->literal.struct_enum.name, out, err);
                 }
                 case LITERAL_ENUM:
                 {
-                    return find_struct_definition(c, *e->literal.struct_enum.name, out, err);
+                    return find_struct_definition(c, e->literal.struct_enum.name, out, err);
                 }
                 case LITERAL_STR:
                 case LITERAL_NUMERIC:
@@ -211,6 +211,7 @@ int infer_type(struct expression *e,
 		}
         case BINARY_EXPRESSION:
         {
+            // TODO recursive inferring
             if (e->binary.binary_op == DOT_BINARY)
             {
                 struct type l_type = {0};
@@ -218,7 +219,11 @@ int infer_type(struct expression *e,
                 {
                     if (l_type.kind == TY_STRUCT)
                     {
-                        return infer_field_type(l_type.struct_type, e->binary.r, c, err, out);
+                        struct type complete = {0};
+                        if (find_struct_definition(c, l_type.name, &complete, err)) {
+                            return infer_field_type(complete.struct_type, e->binary.r, c, err, out);
+                        }
+                        return 0;
                     }
                 }
             } else {
@@ -625,7 +630,7 @@ int contextualise(struct list_statement *s,
     #ifdef DEBUG_CONTEXT
         for (size_t i = 0; i < out->statements.size; i++) {
             show_statement_context(&out->statements.data[i]);
-            printf("\n");
+            printf("\n\n");
         }
     #endif
     return 1;

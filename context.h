@@ -79,4 +79,8 @@ int contextualise(struct list_statement *s,
                   struct rm_program *out,
                   struct context_error *error);
 
+int get_scoped_variable_type(struct list_scoped_variable *scoped_variables,
+                             struct global_context *c,
+					         struct list_char ident_name,
+							 struct type *out);
 #endif

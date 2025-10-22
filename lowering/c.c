@@ -230,9 +230,16 @@ void write_type(struct type *ty, FILE *file) {
     }
 }
 
-void write_expression(struct expression *e, FILE *file);
+void write_expression(struct expression *e,
+                      struct global_context *gc,
+                      struct list_scoped_variable *scoped_variables,
+                      FILE *file);
 
-void write_literal_expression(struct literal_expression *e, FILE *file) {
+void write_literal_expression(struct literal_expression *e,
+                              struct global_context *global_context,
+                              struct list_scoped_variable *scoped_variables,
+                              FILE *file)
+{
     switch (e->kind) {
         case LITERAL_BOOLEAN:
         {
@@ -269,7 +276,7 @@ void write_literal_expression(struct literal_expression *e, FILE *file) {
             for (size_t i = 0; i < pair_count; i++) {
                 struct key_expression pair = e->struct_enum.key_expr_pairs.data[i];
                 fprintf(file, ".%s = ", pair.key->data);
-                write_expression(pair.expression, file);
+                write_expression(pair.expression, global_context, scoped_variables, file);
                 if (i + 1 < pair_count) {
                     fprintf(file, ",");
                 }
@@ -287,7 +294,11 @@ void write_literal_expression(struct literal_expression *e, FILE *file) {
         }
 }
 
-void write_unary_expression(struct unary_expression *e, FILE *file) {
+void write_unary_expression(struct unary_expression *e,
+                            struct global_context *global_context,
+                            struct list_scoped_variable *scoped_variables,
+                            FILE *file)
+{
     switch (e->unary_operator) {
         case BANG_UNARY:
             fprintf(file, "!");
@@ -302,11 +313,49 @@ void write_unary_expression(struct unary_expression *e, FILE *file) {
             UNREACHABLE("unary operator not handled");
     }
 
-    write_expression(e->expression, file);
+    write_expression(e->expression, global_context, scoped_variables, file);
 }
 
-void write_binary_expression(struct binary_expression *e, FILE *file) {
-    write_expression(e->l, file);
+int expression_is_pointer(struct expression *e,
+                          struct global_context *global_context,
+                          struct list_scoped_variable *scoped_variables)
+{
+    switch (e->kind) {
+        case LITERAL_EXPRESSION:
+        {
+            if (e->literal.kind == LITERAL_NAME) {
+                struct type variable_type = {0};
+                if (get_scoped_variable_type(scoped_variables,
+                        global_context,
+                        *e->literal.name,
+                        &variable_type))
+                {
+                    for (size_t i = 0; i < variable_type.modifiers.size; i++) {
+                        if (variable_type.modifiers.data[i].kind == POINTER_MODIFIER_KIND) {
+                            return 1;
+                        }
+                    }
+                }
+            }
+
+            break;
+        }
+        case UNARY_EXPRESSION:
+        case BINARY_EXPRESSION:
+        case GROUP_EXPRESSION:
+        case FUNCTION_EXPRESSION:
+            break;
+    }
+
+    return 0;
+}
+
+void write_binary_expression(struct binary_expression *e,
+                             struct global_context *global_context,
+                             struct list_scoped_variable *scoped_variables,
+                             FILE *file)
+{
+    write_expression(e->l, global_context, scoped_variables, file);
     switch (e->binary_op) {
         case PLUS_BINARY:
             fprintf(file, " + ");
@@ -340,32 +389,38 @@ void write_binary_expression(struct binary_expression *e, FILE *file) {
             break;
         case DOT_BINARY:
         {
-            fprintf(file, ".");
-            // TODO
-            // if (expression_is_pointer(e->l, scope)) {
-            //     fprintf(file, "->");
-            // } else {
-            //     fprintf(file, ".");
-            // }
+            if (expression_is_pointer(e->l, global_context, scoped_variables)) {
+                fprintf(file, "->");
+            } else {
+                fprintf(file, ".");
+            }
             break;
         }
         default:
             UNREACHABLE("binary operator not handled");
     }
-    write_expression(e->r, file);
+    write_expression(e->r, global_context, scoped_variables, file);
 }
 
-void write_grouped_expression(struct expression *e, FILE *file) {
+void write_grouped_expression(struct expression *e,
+                              struct global_context *global_context,
+                              struct list_scoped_variable *scoped_variables,
+                              FILE *file)
+{
     fprintf(file, "(");
-    write_expression(e, file);
+    write_expression(e, global_context, scoped_variables, file);
     fprintf(file, ")");
 }
 
-void write_function_expression(struct function_expression *e, FILE *file) {
+void write_function_expression(struct function_expression *e,
+                               struct global_context *global_context,
+                               struct list_scoped_variable *scoped_variables,
+                               FILE *file)
+{
     fprintf(file, "%s(", e->function_name->data);
     size_t param_count = e->params->size;
     for (size_t i = 0; i < param_count; i++) {
-        write_expression(&e->params->data[i], file);
+        write_expression(&e->params->data[i], global_context, scoped_variables, file);
         if (i < param_count - 1) {
             fprintf(file, ", ");
         }
@@ -373,22 +428,26 @@ void write_function_expression(struct function_expression *e, FILE *file) {
     fprintf(file, ")");
 }
 
-void write_expression(struct expression *e, FILE *file) {
+void write_expression(struct expression *e,
+                      struct global_context *gc,
+                      struct list_scoped_variable *scoped_variables,
+                      FILE *file)
+{
     switch (e->kind) {
         case LITERAL_EXPRESSION:
-            write_literal_expression(&e->literal, file);
+            write_literal_expression(&e->literal, gc, scoped_variables, file);
             return;
         case UNARY_EXPRESSION:
-            write_unary_expression(&e->unary, file);
+            write_unary_expression(&e->unary, gc, scoped_variables, file);
             return;
         case BINARY_EXPRESSION:
-            write_binary_expression(&e->binary, file);
+            write_binary_expression(&e->binary, gc, scoped_variables, file);
             return;
         case GROUP_EXPRESSION:
-            write_grouped_expression(e->grouped, file);
+            write_grouped_expression(e->grouped, gc, scoped_variables, file);
             return;
         case FUNCTION_EXPRESSION:
-            write_function_expression(&e->function, file);
+            write_function_expression(&e->function, gc, scoped_variables, file);
             return;
         default:
             UNREACHABLE("expression kind not handled");
@@ -402,7 +461,9 @@ void write_type_default(struct type *type, FILE *file) {
     fprintf(file, "0");
 }
 
-void write_binding_statement(struct binding_statement_context *s, FILE *file) {
+void write_binding_statement(struct statement_context *c, FILE *file) {
+    assert(c->kind == BINDING_STATEMENT);
+    struct binding_statement_context *s = &c->binding_statement;
     if (s->binding_statement->has_type) {
         write_type(&s->binding_statement->variable_type, file);
     } else {
@@ -415,14 +476,16 @@ void write_binding_statement(struct binding_statement_context *s, FILE *file) {
         // TODO: check has_type
         write_type_default(&s->binding_statement->variable_type, file);
     } else {
-        write_expression(&s->binding_statement->value, file);
+        write_expression(&s->binding_statement->value, c->global_context, &c->scoped_variables, file);
     }
     fprintf(file, ";");
 }
 
-void write_if_statement(struct if_statement_context *s, FILE *file) {
+void write_if_statement(struct statement_context *c, FILE *file) {
+    assert(c->kind == IF_STATEMENT);
+    struct if_statement_context *s = &c->if_statement_context;
     fprintf(file, "if (");
-    write_expression(&s->condition, file);
+    write_expression(&s->condition, c->global_context, &c->scoped_variables, file);
     fprintf(file, ")");
     write_statement(s->success_statement, file);
     if (s->else_statement != NULL) {
@@ -431,9 +494,11 @@ void write_if_statement(struct if_statement_context *s, FILE *file) {
     }
 }
 
-void write_return_statement(struct return_statement_context *s, FILE *file) {
+void write_return_statement(struct statement_context *c, FILE *file) {
+    assert(c->kind == RETURN_STATEMENT);
+    struct return_statement_context *s = &c->return_statement;
     fprintf(file, "return ");
-    write_expression(s->e, file);
+    write_expression(s->e, c->global_context, &c->scoped_variables, file);
     fprintf(file, ";");
 }
 
@@ -447,14 +512,18 @@ void write_block_statement(struct list_statement_context *statements, FILE *file
     fprintf(file, "}");
 }
 
-void write_action_statement(struct action_statement_context *s, FILE *file) {
-    write_expression(s->e, file);
+void write_action_statement(struct statement_context *c, FILE *file) {
+    assert(c->kind == ACTION_STATEMENT);
+    struct action_statement_context *s = &c->action_statement_context;
+    write_expression(s->e, c->global_context, &c->scoped_variables, file);
     fprintf(file, ";");
 }
 
-void write_while_statement(struct while_loop_statement_context *s, FILE *file) {
+void write_while_statement(struct statement_context *c, FILE *file) {
+    assert(c->kind == WHILE_LOOP_STATEMENT);
+    struct while_loop_statement_context *s = &c->while_loop_statement;
     fprintf(file, "while (");
-    write_expression(&s->condition, file);
+    write_expression(&s->condition, c->global_context, &c->scoped_variables, file);
     fprintf(file, ")");
     write_statement(s->do_statement, file);
 }
@@ -553,22 +622,22 @@ void write_switch_statement(struct switch_statement *s, FILE *file) {
 void write_statement(struct statement_context *s, FILE *file) {
     switch (s->kind) {
         case BINDING_STATEMENT:
-            write_binding_statement(&s->binding_statement, file);
+            write_binding_statement(s, file);
             break;
         case IF_STATEMENT:
-            write_if_statement(&s->if_statement_context, file);
+            write_if_statement(s, file);
             break;
         case RETURN_STATEMENT:
-            write_return_statement(&s->return_statement, file);
+            write_return_statement(s, file);
             break;
         case BLOCK_STATEMENT:
             write_block_statement(s->block_statements, file);
             break;
         case ACTION_STATEMENT:
-            write_action_statement(&s->action_statement_context, file);
+            write_action_statement(s, file);
             break;
         case WHILE_LOOP_STATEMENT:
-            write_while_statement(&s->while_loop_statement, file);
+            write_while_statement(s, file);
             break;
         case TYPE_DECLARATION_STATEMENT:
             write_type_declaration_statement(&s->type_declaration, file);
