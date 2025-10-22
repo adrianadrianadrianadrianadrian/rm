@@ -52,19 +52,27 @@ enum token_type {
     CLOSE_SQUARE_PAREN,
 };
 
+struct token_metadata {
+    unsigned int row;
+    unsigned int col;
+    unsigned int length;
+    char *file_name;
+};
+
 typedef struct token {
     enum token_type token_type;
     union {
         struct list_char *identifier;
         double numeric;
     };
-    int position;
+    struct token_metadata metadata;
 } token;
 
 typedef struct positional_char {
     char value;
     int row;
     int col;
+    char *file_name;
 } positional_char;
 
 struct_list(positional_char);
@@ -84,7 +92,7 @@ struct token_buffer {
     struct file_buffer source;
 };
 
-struct token_buffer create_token_buffer(FILE *fstream);
+struct token_buffer create_token_buffer(FILE *fstream, char *file_name);
 void seek_back_token(struct token_buffer *s, size_t amount);
 int get_token(struct token_buffer *s, struct token *out);
 int get_token_type(struct token_buffer *s, struct token *out, enum token_type ty);

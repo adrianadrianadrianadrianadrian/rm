@@ -464,7 +464,7 @@ void write_type_default(struct type *type, FILE *file) {
 void write_binding_statement(struct statement_context *c, FILE *file) {
     assert(c->kind == BINDING_STATEMENT);
     struct binding_statement_context *s = &c->binding_statement;
-    if (s->binding_statement->has_type) {
+    if (s->binding_statement->metadata.has_type) {
         write_type(&s->binding_statement->variable_type, file);
     } else {
         write_type(s->inferred_type, file);

@@ -245,11 +245,17 @@ struct type_declaration_statement {
     struct list_statement *statements;
 };
 
+struct binding_statement_metadata {
+    int has_type;
+    int line_number;
+    char *file_name;
+};
+
 struct binding_statement {
     struct list_char variable_name;
     struct type variable_type;
     struct expression value;
-    int has_type;
+    struct binding_statement_metadata metadata;
 };
 
 struct if_statement {

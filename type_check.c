@@ -48,18 +48,18 @@ int type_eq(struct type *l, struct type *r) {
 
 int binding_statement_check(struct binding_statement_context *s, struct type_check_error *error)
 {
-    if (!s->binding_statement->has_type && s->inferred_type == NULL) {
+    if (!s->binding_statement->metadata.has_type && s->inferred_type == NULL) {
         append_list_char_slice(&error->error_message, "type annotations needed.");
         return 0;
     }
     
-    if (s->binding_statement->has_type && s->inferred_type == NULL)
+    if (s->binding_statement->metadata.has_type && s->inferred_type == NULL)
     {
         // TODO ensure an inferred type is always provided instead.
         return 1;
     }
     
-    if (s->binding_statement->has_type
+    if (s->binding_statement->metadata.has_type
         && !type_eq(s->inferred_type, &s->binding_statement->variable_type))
     {
         append_list_char_slice(&error->error_message, "mismatch types.");

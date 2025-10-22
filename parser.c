@@ -894,13 +894,16 @@ int parse_binding_statement(struct token_buffer *s, struct statement *out)
     struct type type = {0};
     struct expression expression = {0};
     struct list_char variable_name = {0};
-    int has_type = 0;
+    struct binding_statement_metadata metadata = {0};
     
     if (!get_token_type(s, &tmp, IDENTIFIER)) return 0;
     variable_name = *tmp.identifier;
+    metadata.file_name = tmp.metadata.file_name;
+    metadata.line_number = tmp.metadata.row;
+
     if (get_token_type(s, &tmp, COLON)) {
         if (!parse_type(s, &type, 0, 1))      return 0;
-        has_type = 1;
+        metadata.has_type = 1;
     }
     if (!get_token_type(s, &tmp, EQ))         return 0;
     if (!parse_expression(s, &expression))    return 0;
@@ -912,7 +915,7 @@ int parse_binding_statement(struct token_buffer *s, struct statement *out)
             .variable_name = variable_name,
             .variable_type = type,
             .value = expression,
-            .has_type = has_type
+            .metadata = metadata
         }
     };
 

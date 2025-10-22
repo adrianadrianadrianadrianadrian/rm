@@ -8,7 +8,7 @@
 
 int main(int argc, char **argv) {
     FILE *f = fopen(argv[1], "r");
-    struct token_buffer tok_buf = create_token_buffer(f);
+    struct token_buffer tok_buf = create_token_buffer(f, argv[1]);
 
     struct list_statement file = {0};
     if (!parse_rm_file(&tok_buf, &file)) {
