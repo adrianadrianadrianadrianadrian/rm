@@ -351,7 +351,7 @@ void add_scoped_variable(struct statement_context *c, struct list_scoped_variabl
 
     struct scoped_variable var = (struct scoped_variable) {
         .name = c->binding_statement.binding_statement->variable_name,
-        .defined_type = c->binding_statement.binding_statement->metadata.has_type
+        .defined_type = c->binding_statement.binding_statement->has_type
             ? &c->binding_statement.binding_statement->variable_type
             : NULL,
         .inferred_type = c->binding_statement.inferred_type
@@ -763,7 +763,7 @@ void show_statement_context(struct statement_context *s)
         case BINDING_STATEMENT:
         {
             printf("binding_statement,%s,", s->binding_statement.binding_statement->variable_name.data);
-            if (s->binding_statement.binding_statement->metadata.has_type) {
+            if (s->binding_statement.binding_statement->has_type) {
                 print_type(&s->binding_statement.binding_statement->variable_type);
             } else {
                 printf("none");

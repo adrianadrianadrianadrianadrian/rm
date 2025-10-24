@@ -23,7 +23,7 @@ struct file_buffer create_file_buffer(FILE *fstream, char *file_name) {
                 .col = col,
                 .file_name = file_name
             };
-
+            
             list_append(&chars, pc);
 
             if (buffer[i] == '\n') {
@@ -458,6 +458,12 @@ struct token_buffer create_token_buffer(FILE *fstream, char *file_name) {
         .current_position = 0,
         .source = b
     };
+}
+
+struct token_metadata *get_token_metadata(struct token_buffer *toks, size_t position)
+{
+    assert(position <= toks->tokens.size);
+    return &toks->tokens.data[position].metadata;
 }
 
 int get_token(struct token_buffer *s, struct token *out) {

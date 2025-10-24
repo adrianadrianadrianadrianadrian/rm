@@ -4,6 +4,7 @@
 #include <assert.h>
 
 int type_eq(struct type *l, struct type *r);
+struct list_char show_type(struct type *ty);
 
 struct type_check_error {
     struct list_char error_message;
@@ -48,18 +49,18 @@ int type_eq(struct type *l, struct type *r) {
 
 int binding_statement_check(struct binding_statement_context *s, struct type_check_error *error)
 {
-    if (!s->binding_statement->metadata.has_type && s->inferred_type == NULL) {
+    if (!s->binding_statement->has_type && s->inferred_type == NULL) {
         append_list_char_slice(&error->error_message, "type annotations needed.");
         return 0;
     }
     
-    if (s->binding_statement->metadata.has_type && s->inferred_type == NULL)
+    if (s->binding_statement->has_type && s->inferred_type == NULL)
     {
-        // TODO ensure an inferred type is always provided instead.
+        // TODO check value is the type declared.
         return 1;
     }
     
-    if (s->binding_statement->metadata.has_type
+    if (s->binding_statement->has_type
         && !type_eq(s->inferred_type, &s->binding_statement->variable_type))
     {
         append_list_char_slice(&error->error_message, "mismatch types.");
@@ -110,4 +111,89 @@ int type_check(struct list_statement_context statements, struct type_check_error
         if (!type_check_single(&statements.data[i], error)) return 0;
     }
     return 1;
+}
+
+struct list_char show_type(struct type *ty) {
+    struct list_char output = list_create(char, 10);
+    if (ty == NULL) {
+        return output;
+    }
+
+    switch (ty->kind) {
+        case TY_PRIMITIVE:
+        {
+            switch (ty->primitive_type) {
+                case UNIT:
+                    append_list_char_slice(&output, "void");
+                    break;
+                case BOOL:
+                    append_list_char_slice(&output, "bool");
+                    break;
+                case U8:
+                    append_list_char_slice(&output, "u8");
+                    break;
+                case I8:
+                    append_list_char_slice(&output, "i8");
+                    break;
+                case I16:
+                    append_list_char_slice(&output, "i16");
+                    break;
+                case U16:
+                    append_list_char_slice(&output, "u16");
+                    break;
+                case I32:
+                    append_list_char_slice(&output, "i32");
+                    break;
+                case U32:
+                    append_list_char_slice(&output, "u32");
+                    break;
+                case I64:
+                    append_list_char_slice(&output, "i64");
+                    break;
+                case U64:
+                    append_list_char_slice(&output, "u64");
+                    break;
+                case USIZE:
+                    append_list_char_slice(&output, "usize");
+                    break;
+                case F32:
+                    append_list_char_slice(&output, "f32");
+                    break;
+                case F64:
+                    append_list_char_slice(&output, "f64");
+                    break;
+            }
+            break;
+        }
+        case TY_STRUCT:
+        {
+            append_list_char_slice(&output, "struct ");
+            append_list_char_slice(&output, ty->name->data);
+            break;
+        }
+        case TY_ENUM:
+        {
+            append_list_char_slice(&output, "enum ");
+            append_list_char_slice(&output, ty->name->data);
+            break;
+        }
+        case TY_FUNCTION:
+        {
+            append_list_char_slice(&output, "fn(");
+            for (size_t i = 0; i < ty->function_type.params.size; i++) {
+                struct list_char param_type = show_type(ty->function_type.params.data[i].field_type);
+                append_list_char_slice(&output, param_type.data);
+                if (i < ty->function_type.params.size - 1) {
+                    append_list_char_slice(&output, ", ");
+                }
+            }
+            append_list_char_slice(&output, ") -> ");
+            struct list_char return_type = show_type(ty->function_type.return_type);
+            append_list_char_slice(&output, return_type.data);
+            break;
+        }
+    }
+
+    append_list_char_slice(&output, "\0");
+    return output;
 }

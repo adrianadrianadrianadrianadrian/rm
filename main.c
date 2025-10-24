@@ -10,9 +10,15 @@ int main(int argc, char **argv) {
     FILE *f = fopen(argv[1], "r");
     struct token_buffer tok_buf = create_token_buffer(f, argv[1]);
 
+    struct parse_error error = {0};
     struct list_statement file = {0};
-    if (!parse_rm_file(&tok_buf, &file)) {
-        printf("Failed to parse rm file.");
+    if (!parse_rm_file(&tok_buf, &file, &error)) {
+        printf("%s:%d:%d: syntax_error: %s\n",
+            error.token_metadata->file_name,
+            error.token_metadata->row,
+            error.token_metadata->col,
+            error.error_message.data);
+
         return 1;
     }
 
