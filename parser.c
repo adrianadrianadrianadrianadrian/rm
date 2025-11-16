@@ -22,6 +22,34 @@ int try_parse(struct token_buffer *s,
     return 1;
 }
 
+void add_parse_error(struct token_buffer *s,
+                     struct parse_error *out,
+                     char *message)
+{
+    size_t position = s->current_position;
+    if (s->current_position > 1) {
+        position -= 1;
+    }
+
+    struct token_metadata *tok_metadata = get_token_metadata(s, position);
+    struct list_char error_message = list_create(char, 35);
+    append_list_char_slice(&error_message, message);
+    struct parse_error *boxed = NULL;
+    if (out->errored) {
+        boxed = malloc(sizeof(*boxed));
+        *boxed = *out;
+    }
+
+    struct parse_error err = (struct parse_error) {
+        .token_metadata = tok_metadata,
+        .errored = 1,
+        .error_message = error_message,
+        .inner = boxed
+    };
+        
+    *out = err;
+}
+
 int is_primitive(struct list_char *raw, enum primitive_type *out)
 {
     if (strcmp(raw->data, "void") == 0) {
@@ -591,7 +619,10 @@ int parse_function_expression(struct token_buffer *s, struct function_expression
         should_continue = get_token_type(s, &tmp, COMMA);
     }
 
-    if (!get_token_type(s, &tmp, CLOSE_ROUND_PAREN)) return 0;
+    if (!get_token_type(s, &tmp, CLOSE_ROUND_PAREN)) {
+        add_parse_error(s, error, "expected a `)`.");
+        return 0;
+    }
 
     *out = (struct function_expression) {
         .function_name = name.identifier,
@@ -900,30 +931,6 @@ int parse_return_statement(struct token_buffer *s, struct statement *out, struct
     return 1;
 }
 
-void add_parse_error(struct token_buffer *s,
-                      struct parse_error *out,
-                      char *message)
-{
-    struct token_metadata *tok_metadata = get_token_metadata(s, s->current_position - 1);
-    struct list_char error_message = list_create(char, 35);
-    append_list_char_slice(&error_message, message);
-    struct parse_error err = (struct parse_error) {
-        .token_metadata = tok_metadata,
-        .errored = 1,
-        .error_message = error_message,
-        .parent = NULL
-    };
-
-    // if (out->parent == NULL && !out->errored) {
-    //     struct parse_error *boxed = malloc(sizeof(*boxed));
-    //     *boxed = err;
-    //     out->parent = boxed;
-    //     return;
-    // }
-        
-    *out = err;
-}
-
 int parse_binding_statement(struct token_buffer *s,
                             struct statement *out,
                             struct parse_error *error)
@@ -939,6 +946,16 @@ int parse_binding_statement(struct token_buffer *s,
 
     if (get_token_type(s, &tmp, COLON)) {
         if (!parse_type(s, &type, 0, 1, error)) {
+            if (get_token_type(s, &tmp, IDENTIFIER)) {
+                struct list_char error_message = list_create(char, 30);
+                append_list_char_slice(&error_message, "unknown type");
+                append_list_char_slice(&error_message, " `");
+                append_list_char_slice(&error_message, tmp.identifier->data);
+                append_list_char_slice(&error_message, "`.");
+                add_parse_error(s, error, error_message.data);
+                return 0;
+            }
+
             add_parse_error(s, error, "a type annotation is required after a `:` in a binding statement.");
             return 0;
         }
@@ -946,7 +963,7 @@ int parse_binding_statement(struct token_buffer *s,
     }
 
     if (!get_token_type(s, &tmp, EQ)) {
-        add_parse_error(s, error, "expected a `=`");
+        add_parse_error(s, error, "expected a `=`.");
         return 0;
     }
 
@@ -1136,7 +1153,7 @@ int parse_switch_statement(struct token_buffer *tb, struct statement *out, struc
 
     if (!get_token_type(tb, &tmp, SWITCH_KEYWORD))    return 0;
     if (!get_token_type(tb, &tmp, OPEN_ROUND_PAREN))  return 0;
-    if (!parse_expression(tb, &switch_on, error))            return 0;
+    if (!parse_expression(tb, &switch_on, error))     return 0;
     if (!get_token_type(tb, &tmp, CLOSE_ROUND_PAREN)) return 0;
     if (!get_token_type(tb, &tmp, OPEN_CURLY_PAREN))  return 0;
 
@@ -1165,11 +1182,11 @@ int parse_statement(struct token_buffer *s,
     return try_parse(s, out, error, (parser_t)parse_return_statement)
         || try_parse(s, out, error, (parser_t)parse_break_statement)
         || try_parse(s, out, error, (parser_t)parse_action_statement)
-        || try_parse(s, out, error, (parser_t)parse_binding_statement)
         || try_parse(s, out, error, (parser_t)parse_if_statement)
         || try_parse(s, out, error, (parser_t)parse_block_statement)
         || try_parse(s, out, error, (parser_t)parse_while_loop_statement)
-        || try_parse(s, out, error, (parser_t)parse_switch_statement);
+        || try_parse(s, out, error, (parser_t)parse_switch_statement)
+        || try_parse(s, out, error, (parser_t)parse_binding_statement);
 }
 
 int parse_top_level_statement(struct token_buffer *s,
@@ -1186,15 +1203,15 @@ int parse_rm_file(struct token_buffer *s,
 {
     struct list_statement statements = list_create(statement, 10);
 
-    for (;;) {
+    while (s->current_position < s->size) {
         struct statement statement = {0};
         if (parse_top_level_statement(s, &statement, error)) {
             list_append(&statements, statement);
         } else {
-            break;
+            return 0;
         }
     }
 
     *out = statements;
-    return !error->errored;
+    return 1;
 }

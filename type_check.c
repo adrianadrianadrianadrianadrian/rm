@@ -29,6 +29,9 @@ int fn_type_eq(struct function_type *l, struct function_type *r) {
 }
 
 int type_eq(struct type *l, struct type *r) {
+    assert(l);
+    assert(r);
+
     if (l->kind != r->kind) {
         return 0;
     }
@@ -81,7 +84,19 @@ int type_check_single(struct statement_context *s, struct type_check_error *erro
                 case TY_FUNCTION:
                 {
                     for (size_t i = 0; i < s->type_declaration.statements->size; i++) {
-                        if (!type_check_single(&s->type_declaration.statements->data[i], error)) return 0;
+                        struct statement_context s_ctx = s->type_declaration.statements->data[i];
+                        if (s->type_declaration.statements->data[i].kind == RETURN_STATEMENT) {
+                            // need to find all nested returns
+                            // struct return_statement_context ctx = s_ctx.return_statement;
+                            // if (!type_eq(ctx.inferred_return_type, s->type_declaration.type.function_type.return_type)) {
+                            //     printf("return type is not correct...");
+                            //     return 0;
+                            // }
+                        } else {
+                            if (!type_check_single(&s->type_declaration.statements->data[i], error)) {
+                                return 0;
+                            }
+                        }
                     }
                     break;
                 }

@@ -6,6 +6,18 @@
 #include "type_check.c"
 #include "lowering/c.h"
 
+void print_parse_error(struct parse_error *err, int depth) {
+    printf("[syntax_error] %s:%d:%d: %s\n",
+        err->token_metadata->file_name,
+        err->token_metadata->row,
+        err->token_metadata->col + 1,
+        err->error_message.data);
+
+    if (err->inner != NULL) {
+        print_parse_error(err->inner, ++depth);
+    }
+}
+
 int main(int argc, char **argv) {
     FILE *f = fopen(argv[1], "r");
     struct token_buffer tok_buf = create_token_buffer(f, argv[1]);
@@ -13,12 +25,7 @@ int main(int argc, char **argv) {
     struct parse_error error = {0};
     struct list_statement file = {0};
     if (!parse_rm_file(&tok_buf, &file, &error)) {
-        printf("%s:%d:%d: syntax_error: %s\n",
-            error.token_metadata->file_name,
-            error.token_metadata->row,
-            error.token_metadata->col,
-            error.error_message.data);
-
+        print_parse_error(&error, 0);
         return 1;
     }
 
