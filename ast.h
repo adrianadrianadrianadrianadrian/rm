@@ -5,7 +5,7 @@
 #include "utils.h"
 
 enum primitive_type {
-    UNIT = 1,
+    VOID = 1,
     BOOL,
     U8,
     I8,
@@ -89,7 +89,8 @@ enum expression_kind {
     UNARY_EXPRESSION,
     BINARY_EXPRESSION,
     GROUP_EXPRESSION,
-    FUNCTION_EXPRESSION
+    FUNCTION_EXPRESSION,
+    VOID_EXPRESSION
 };
 
 enum literal_expression_kind {

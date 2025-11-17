@@ -8,7 +8,7 @@ void write_type(struct type *ty, FILE *file);
 void write_primitive_type(struct type *ty, FILE *file) {
     assert(ty->kind == TY_PRIMITIVE);
     switch (ty->primitive_type) {
-        case UNIT:
+        case VOID:
             fprintf(file, "void");
             return;
         case I8:
@@ -448,6 +448,8 @@ void write_expression(struct expression *e,
             return;
         case FUNCTION_EXPRESSION:
             write_function_expression(&e->function, gc, scoped_variables, file);
+            return;
+        case VOID_EXPRESSION:
             return;
         default:
             UNREACHABLE("expression kind not handled");

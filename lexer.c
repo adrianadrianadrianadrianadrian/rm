@@ -156,6 +156,11 @@ int is_keyword(struct list_char *ident, enum token_type *out) {
         return 1;
     }
 
+    if (strcmp(ident->data, "let") == 0) {
+        *out = LET_KEYWORD;
+        return 1;
+    }
+
     return 0;
 }
 

@@ -7,7 +7,11 @@
 #include "lowering/c.h"
 
 void print_parse_error(struct parse_error *err, int depth) {
-    printf("[syntax_error] %s:%d:%d: %s\n",
+    if (!err->errored) {
+        return;
+    }
+
+    printf("%s:%d:%d: error: %s\n",
         err->token_metadata->file_name,
         err->token_metadata->row,
         err->token_metadata->col + 1,

@@ -270,6 +270,8 @@ int infer_type(struct expression *e,
             }
             return 0;
         }
+        case VOID_EXPRESSION:
+            return 0;
     }
 }
 
@@ -647,7 +649,7 @@ void print_type(struct type *ty) {
         case TY_PRIMITIVE:
         {
             switch (ty->primitive_type) {
-                case UNIT:
+                case VOID:
                     printf("void");
                     return;
                 case BOOL:

@@ -42,6 +42,7 @@ enum token_type {
     NULL_KEYWORD,
     SWITCH_KEYWORD,
     CASE_KEYWORD,
+    LET_KEYWORD,
 
     // parens
     OPEN_ROUND_PAREN,

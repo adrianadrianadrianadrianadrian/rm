@@ -13,6 +13,10 @@ int try_parse(struct token_buffer *s,
               struct parse_error *error,
               int (*parser)(struct token_buffer *, void *, struct parse_error *error))
 {
+    if (error->errored) {
+        return 0;
+    }
+
     size_t start = s->current_position;
     if (!parser(s, out, error)) {
         seek_back_token(s, s->current_position - start);
@@ -53,7 +57,7 @@ void add_parse_error(struct token_buffer *s,
 int is_primitive(struct list_char *raw, enum primitive_type *out)
 {
     if (strcmp(raw->data, "void") == 0) {
-        *out = UNIT;
+        *out = VOID;
         return 1;
     }
 
@@ -127,8 +131,9 @@ struct key_type_pair create_key_type_pair() {
     };
 }
 
-
-int parse_pointer_type_modifier(struct token_buffer *tb, struct type_modifier *out, struct parse_error *error)
+int parse_pointer_type_modifier(struct token_buffer *tb,
+                                struct type_modifier *out,
+                                struct parse_error *error)
 {
     struct token tmp = {0};
     if (!get_token_type(tb, &tmp, STAR)) return 0;
@@ -139,7 +144,9 @@ int parse_pointer_type_modifier(struct token_buffer *tb, struct type_modifier *o
     return 1;
 }
 
-int parse_nullable_type_modifier(struct token_buffer *tb, struct type_modifier *out, struct parse_error *error)
+int parse_nullable_type_modifier(struct token_buffer *tb,
+                                 struct type_modifier *out,
+                                 struct parse_error *error)
 {
     struct token tmp = {0};
     if (!get_token_type(tb, &tmp, QUESTION_MARK)) return 0;
@@ -150,7 +157,9 @@ int parse_nullable_type_modifier(struct token_buffer *tb, struct type_modifier *
     return 1;
 }
 
-int parse_array_type_modifier(struct token_buffer *tb, struct type_modifier *out, struct parse_error *error)
+int parse_array_type_modifier(struct token_buffer *tb,
+                              struct type_modifier *out,
+                              struct parse_error *error)
 {
     struct token tmp = {0};
     int size = 0;
@@ -172,7 +181,9 @@ int parse_array_type_modifier(struct token_buffer *tb, struct type_modifier *out
     return 1;
 }
 
-int parse_mutable_type_modifier(struct token_buffer *tb, struct type_modifier *out, struct parse_error *error)
+int parse_mutable_type_modifier(struct token_buffer *tb,
+                                struct type_modifier *out,
+                                struct parse_error *error)
 {
     struct token tmp = {0};
     if (!get_token_type(tb, &tmp, MUTABLE_KEYWORD)) return 0;
@@ -216,9 +227,9 @@ int parse_key_type_pairs(struct token_buffer *s,
 
     while (should_continue) {
         struct key_type_pair pair = create_key_type_pair();
-        if (!get_token_type(s, &tmp, IDENTIFIER))  return 0;
+        if (!get_token_type(s, &tmp, IDENTIFIER)) return 0;
         pair.field_name = *tmp.identifier;
-        if (!get_token_type(s, &tmp, COLON))       return 0;
+        if (!get_token_type(s, &tmp, COLON)) return 0;
         if (!parse_type(s, pair.field_type, 0, 1, error)) return 0;
         list_append(out, pair);
         should_continue = get_token_type(s, &tmp, COMMA);
@@ -227,19 +238,41 @@ int parse_key_type_pairs(struct token_buffer *s,
     return 1;
 }
 
-int parse_function_type(struct token_buffer *s, struct type *out, int named, struct parse_error *error)
+int parse_function_type(struct token_buffer *s,
+                        struct type *out, int named,
+                        struct parse_error *error)
 {
     struct token tmp;
     struct token name;
     struct list_key_type_pair params = list_create(key_type_pair, 10);
     struct type *return_type = malloc(sizeof(*return_type));
+    *return_type = (struct type) {
+        .kind = TY_PRIMITIVE,
+        .primitive_type = VOID
+    };
 
-    if (named && !get_token_type(s, &name, IDENTIFIER)) return 0;
-    if (!get_token_type(s, &tmp, OPEN_ROUND_PAREN))     return 0;
+    if (named && !get_token_type(s, &name, IDENTIFIER)) {
+        add_parse_error(s, error, "a function must have a name in this position.");
+        return 0;
+    }
+
+    if (!get_token_type(s, &tmp, OPEN_ROUND_PAREN)) {
+        add_parse_error(s, error, "missing `(`.");
+        return 0;
+    }
+
     parse_key_type_pairs(s, &params, error);
-    if (!get_token_type(s, &tmp, CLOSE_ROUND_PAREN))    return 0;
-    if (!get_token_type(s, &tmp, RIGHT_ARROW))          return 0;
-    if (!parse_type(s, return_type, 0, 1, error))       return 0;
+    if (!get_token_type(s, &tmp, CLOSE_ROUND_PAREN)) {
+        add_parse_error(s, error, "missing `)`.");
+        return 0;
+    }
+
+    if (get_token_type(s, &tmp, RIGHT_ARROW)) {
+        if (!parse_type(s, return_type, 0, 1, error)) {
+            add_parse_error(s, error, "unknown return type.");
+            return 0;
+        }
+    }
 
     *out = (struct type) {
         .kind = TY_FUNCTION,
@@ -254,16 +287,31 @@ int parse_function_type(struct token_buffer *s, struct type *out, int named, str
     return 1;
 }
 
-int parse_struct_type(struct token_buffer *s, struct type *out, int predefined_type, struct parse_error *error)
+int parse_struct_type(struct token_buffer *s,
+                      struct type *out,
+                      int predefined_type,
+                      struct parse_error *error)
 {
     struct token name = {0};
     struct token tmp = {0};
     struct list_key_type_pair pairs = list_create(key_type_pair, 10);
 
-    if (!get_token_type(s, &name, IDENTIFIER))           return 0;
-    if (!predefined_type && get_token_type(s, &tmp, OPEN_CURLY_PAREN)) {
-        if (!parse_key_type_pairs(s, &pairs, error))     return 0;
-        if (!get_token_type(s, &tmp, CLOSE_CURLY_PAREN)) return 0;
+    if (!get_token_type(s, &name, IDENTIFIER)) {
+        add_parse_error(s, error, "a struct must have a name.");
+        return 0;
+    }
+
+    if (!predefined_type) {
+        if (!get_token_type(s, &tmp, OPEN_CURLY_PAREN)) {
+            add_parse_error(s, error, "a struct definition must have a body.");
+            return 0;
+        }
+
+        if (!parse_key_type_pairs(s, &pairs, error) && error->errored) return 0;
+        if (!get_token_type(s, &tmp, CLOSE_CURLY_PAREN)) {
+            add_parse_error(s, error, "missing a `}`.");
+            return 0;
+        }
     }
 
     *out = (struct type) {
@@ -279,17 +327,32 @@ int parse_struct_type(struct token_buffer *s, struct type *out, int predefined_t
     return 1;
 }
 
-int parse_enum_type(struct token_buffer *s, struct type *out, int predefined_type, struct parse_error *error)
+int parse_enum_type(struct token_buffer *s,
+                    struct type *out,
+                    int predefined_type,
+                    struct parse_error *error)
 {
     struct token name = {0};
     struct token tmp = {0};
     struct list_key_type_pair pairs = list_create(key_type_pair, 10);
 
-    if (!get_token_type(s, &name, IDENTIFIER))              return 0;
-    if (!predefined_type && get_token_type(s, &tmp, OPEN_CURLY_PAREN)) {
-        if (!parse_key_type_pairs(s, &pairs, error))        return 0;
-        if (!get_token_type(s, &tmp, CLOSE_CURLY_PAREN))    return 0;
-    } 
+    if (!get_token_type(s, &name, IDENTIFIER)) {
+        add_parse_error(s, error, "a enum must have a name.");
+        return 0;
+    }
+
+    if (!predefined_type) {
+        if (!get_token_type(s, &tmp, OPEN_CURLY_PAREN)) {
+            add_parse_error(s, error, "a enum definition must have a body.");
+            return 0;
+        }
+
+        if (!parse_key_type_pairs(s, &pairs, error) && error->errored) return 0;
+        if (!get_token_type(s, &tmp, CLOSE_CURLY_PAREN)) {
+            add_parse_error(s, error, "missing a `}`.");
+            return 0;
+        }
+    }
 
     *out = (struct type) {
         .kind = TY_ENUM,
@@ -457,18 +520,18 @@ int parse_struct_enum_literal_expression(struct token_buffer *s,
         return 0;
     }
 
-    if (!get_token_type(s, &name, IDENTIFIER))       return 0;
-    if (!get_token_type(s, &tmp, OPEN_CURLY_PAREN))  return 0;
+    if (!get_token_type(s, &name, IDENTIFIER))      return 0;
+    if (!get_token_type(s, &tmp, OPEN_CURLY_PAREN)) return 0;
 
     struct list_key_expression pairs = list_create(key_expression, 10);
     int should_continue = 1;
     while (should_continue) {
         struct key_expression pair = {0};
-        if (!get_token_type(s, &tmp, IDENTIFIER))    return 0;
+        if (!get_token_type(s, &tmp, IDENTIFIER)) return 0;
         pair.key = tmp.identifier;
-        if (!get_token_type(s, &tmp, EQ))            return 0;
+        if (!get_token_type(s, &tmp, EQ)) return 0;
         struct expression *e = malloc(sizeof(*e));
-        if (!parse_expression(s, e, error))                 return 0;
+        if (!parse_expression(s, e, error)) return 0;
         pair.expression = e;
         list_append(&pairs, pair);
         should_continue = get_token_type(s, &tmp, COMMA);
@@ -600,12 +663,14 @@ int parse_binary_operator(struct token_buffer *s, enum binary_operator *out, str
     return 0;
 }
 
-int parse_function_expression(struct token_buffer *s, struct function_expression *out, struct parse_error *error)
+int parse_function_expression(struct token_buffer *s,
+                              struct function_expression *out,
+                              struct parse_error *error)
 {
     struct token tmp = {0};
     struct token name = {0};
-    if (!get_token_type(s, &name, IDENTIFIER))       return 0;
-    if (!get_token_type(s, &tmp, OPEN_ROUND_PAREN))  return 0;
+    if (!get_token_type(s, &name, IDENTIFIER))      return 0;
+    if (!get_token_type(s, &tmp, OPEN_ROUND_PAREN)) return 0;
 
     struct list_expression *params = malloc(sizeof(*params));
     *params = list_create(expression, 10);
@@ -652,7 +717,7 @@ int parse_expression_inner(struct token_buffer *s, struct expression *out, struc
 
     if (get_token_type(s, &tmp, OPEN_ROUND_PAREN)) {
         struct expression *nested = malloc(sizeof(*nested));
-        if (!parse_expression(s, nested, error))                return 0;
+        if (!parse_expression(s, nested, error)) return 0;
         if (!get_token_type(s, &tmp, CLOSE_ROUND_PAREN)) return 0;
         *out = (struct expression) {
             .kind = GROUP_EXPRESSION,
@@ -716,7 +781,9 @@ int parse_expression(struct token_buffer *s, struct expression *out, struct pars
 
 int parse_switch_pattern(struct token_buffer *tb, struct switch_pattern *out, struct parse_error *error);
 
-int parse_variable_or_underscore_pattern(struct token_buffer *tb, struct switch_pattern *out, struct parse_error *error)
+int parse_variable_or_underscore_pattern(struct token_buffer *tb,
+                                         struct switch_pattern *out,
+                                         struct parse_error *error)
 {
     struct token tmp = {0};
     if (!get_token_type(tb, &tmp, IDENTIFIER)) return 0;
@@ -906,7 +973,10 @@ int parse_break_statement(struct token_buffer *s, struct statement *out, struct 
 {
     struct token tmp = {0};
     if (!get_token_type(s, &tmp, BREAK_KEYWORD)) return 0;
-    if (!get_token_type(s, &tmp, SEMICOLON))     return 0;
+    if (!get_token_type(s, &tmp, SEMICOLON)) {
+        add_parse_error(s, error, "a break statement must end with a semicolon.");
+        return 0;
+    }
 
     *out = (struct statement) {
         .kind = BREAK_STATEMENT
@@ -915,19 +985,38 @@ int parse_break_statement(struct token_buffer *s, struct statement *out, struct 
     return 1;
 }
 
-int parse_return_statement(struct token_buffer *s, struct statement *out, struct parse_error *error)
+int parse_return_statement(struct token_buffer *s,
+                           struct statement *out,
+                           struct parse_error *error)
 {
     struct token tmp = {0};
     struct expression expression = {0};
-    if (!get_token_type(s, &tmp, RETURN_KEYWORD))  return 0;
-    if (!parse_expression(s, &expression, error))  return 0;
-    if (!get_token_type(s, &tmp, SEMICOLON))       return 0;
+
+    if (!get_token_type(s, &tmp, RETURN_KEYWORD)) return 0;
+    if (!parse_expression(s, &expression, error)) {
+        if (get_token_type(s, &tmp, SEMICOLON)) {
+            *out = (struct statement) {
+                .kind = RETURN_STATEMENT,
+                .expression = (struct expression) {
+                    .kind = VOID_EXPRESSION
+                }
+            };
+            return 1;
+        }
+
+        add_parse_error(s, error, "a return statement must return a valid expression.");
+        return 0;
+    }
+
+    if (!get_token_type(s, &tmp, SEMICOLON)) {
+        add_parse_error(s, error, "a statement must end with a semicolon.");
+        return 0;
+    }
 
     *out = (struct statement) {
         .kind = RETURN_STATEMENT,
         .expression = expression
     };
-
     return 1;
 }
 
@@ -941,7 +1030,11 @@ int parse_binding_statement(struct token_buffer *s,
     struct list_char variable_name = {0};
     int has_type = 0;
     
-    if (!get_token_type(s, &tmp, IDENTIFIER)) return 0;
+    if (!get_token_type(s, &tmp, LET_KEYWORD)) return 0;
+    if (!get_token_type(s, &tmp, IDENTIFIER)) {
+        add_parse_error(s, error, "a let binding must have a name.");
+        return 0;
+    }
     variable_name = *tmp.identifier;
 
     if (get_token_type(s, &tmp, COLON)) {
@@ -972,13 +1065,12 @@ int parse_binding_statement(struct token_buffer *s,
         append_list_char_slice(&msg, "the variable `");
         append_list_char_slice(&msg, variable_name.data);
         append_list_char_slice(&msg, "` must be bound to a valid expression.");
-        append_list_char_slice(&msg, "\0");
         add_parse_error(s, error, msg.data);
         return 0; 
     }
 
     if (!get_token_type(s, &tmp, SEMICOLON)) {
-        add_parse_error(s, error, "a statement must end with a semicolon.");
+        add_parse_error(s, error, "a binding statement must end with a semicolon.");
         return 0;
     }
 
@@ -1035,16 +1127,29 @@ int parse_if_statement(struct token_buffer *s,
     struct statement *success_statement = malloc(sizeof(*success_statement));
     struct statement *else_statement = NULL;
 
-    if (!get_token_type(s, &tmp, IF_KEYWORD))         return 0;
-    if (!get_token_type(s, &tmp, OPEN_ROUND_PAREN))   return 0;
-    if (!parse_expression(s, &condition, error))             return 0;
-    if (!get_token_type(s, &tmp, CLOSE_ROUND_PAREN))  return 0;
-    if (!parse_block_statement(s, success_statement, error)) return 0;
+    if (!get_token_type(s, &tmp, IF_KEYWORD)) return 0;
+    if (!get_token_type(s, &tmp, OPEN_ROUND_PAREN)) {
+        add_parse_error(s, error, "`if` must be followed by a predicate within round parentheses.");
+        return 0;
+    }
+
+    if (!parse_expression(s, &condition, error)) return 0;
+    if (!get_token_type(s, &tmp, CLOSE_ROUND_PAREN)) {
+        add_parse_error(s, error, "missing a closing round parenthesis, `)`.");
+        return 0;
+    }
+
+    if (!parse_block_statement(s, success_statement, error)) {
+        add_parse_error(s, error, "invalid success branch.");
+        return 0;
+    }
+
     if (get_token_type(s, &tmp, ELSE_KEYWORD)) {
         else_statement = malloc(sizeof(*else_statement));
         if (!parse_if_statement(s, else_statement, error) &&
             !parse_block_statement(s, else_statement, error))
         {
+            add_parse_error(s, error, "invalid else branch.");
             return 0;
         }
     }
@@ -1065,8 +1170,11 @@ int parse_action_statement(struct token_buffer *s, struct statement *out, struct
 {
     struct token tmp = {0};
     struct expression expression = {0};
-    if (!parse_expression(s, &expression, error))   return 0;
-    if (!get_token_type(s, &tmp, SEMICOLON)) return 0;
+    if (!parse_expression(s, &expression, error)) return 0;
+    if (!get_token_type(s, &tmp, SEMICOLON)) {
+        add_parse_error(s, error, "an action statement must end with a semicolon.");
+        return 0;
+    }
     
     *out = (struct statement) {
         .kind = ACTION_STATEMENT,
@@ -1082,11 +1190,22 @@ int parse_while_loop_statement(struct token_buffer *s, struct statement *out, st
     struct statement *do_statement = malloc(sizeof(*do_statement));
     struct expression expression = {0};
 
-    if (!get_token_type(s, &tmp, WHILE_KEYWORD))     return 0;
-    if (!get_token_type(s, &tmp, OPEN_ROUND_PAREN))  return 0;
-    if (!parse_expression(s, &expression, error))           return 0;
-    if (!get_token_type(s, &tmp, CLOSE_ROUND_PAREN)) return 0;
-    if (!parse_block_statement(s, do_statement, error))     return 0;
+    if (!get_token_type(s, &tmp, WHILE_KEYWORD)) return 0;
+    if (!get_token_type(s, &tmp, OPEN_ROUND_PAREN)) {
+        add_parse_error(s, error, "`while` must be followed by a predicate within round parentheses.");
+        return 0;
+    }
+
+    if (!parse_expression(s, &expression, error)) return 0;
+    if (!get_token_type(s, &tmp, CLOSE_ROUND_PAREN)) {
+        add_parse_error(s, error, "missing a closing round parenthesis, `)`.");
+        return 0;
+    }
+
+    if (!parse_block_statement(s, do_statement, error)) {
+        add_parse_error(s, error, "invalid while block.");
+        return 0;
+    }
 
     *out = (struct statement) {
         .kind = WHILE_LOOP_STATEMENT,
@@ -1114,7 +1233,10 @@ int parse_type_declaration(struct token_buffer *s, struct statement *out, struct
     }
 
     struct statement body = {0};
-    if (!parse_block_statement(s, &body, error)) return 0;
+    if (!parse_block_statement(s, &body, error)) {
+        add_parse_error(s, error, "a function must have a valid body.");
+        return 0;
+    }
 
     *out = (struct statement) {
         .kind = TYPE_DECLARATION_STATEMENT,
@@ -1133,9 +1255,9 @@ int parse_case_statement(struct token_buffer *tb, struct case_statement *out, st
     struct switch_pattern pattern = {0};
     struct statement *s = malloc(sizeof(*s));
     if (!get_token_type(tb, &tmp, CASE_KEYWORD)) return 0;
-    if (!parse_switch_pattern(tb, &pattern, error))     return 0;
-    if (!get_token_type(tb, &tmp, COLON))        return 0;
-    if (!parse_statement(tb, s, error))                 return 0;
+    if (!parse_switch_pattern(tb, &pattern, error)) return 0;
+    if (!get_token_type(tb, &tmp, COLON)) return 0;
+    if (!parse_statement(tb, s, error)) return 0;
     *out = (struct case_statement) {
         .pattern = pattern,
         .statement = s
@@ -1180,13 +1302,13 @@ int parse_statement(struct token_buffer *s,
                     struct parse_error *error)
 {
     return try_parse(s, out, error, (parser_t)parse_return_statement)
+        || try_parse(s, out, error, (parser_t)parse_binding_statement)
         || try_parse(s, out, error, (parser_t)parse_break_statement)
         || try_parse(s, out, error, (parser_t)parse_action_statement)
         || try_parse(s, out, error, (parser_t)parse_if_statement)
         || try_parse(s, out, error, (parser_t)parse_block_statement)
         || try_parse(s, out, error, (parser_t)parse_while_loop_statement)
-        || try_parse(s, out, error, (parser_t)parse_switch_statement)
-        || try_parse(s, out, error, (parser_t)parse_binding_statement);
+        || try_parse(s, out, error, (parser_t)parse_switch_statement);
 }
 
 int parse_top_level_statement(struct token_buffer *s,

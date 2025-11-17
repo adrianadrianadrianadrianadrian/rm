@@ -138,7 +138,7 @@ struct list_char show_type(struct type *ty) {
         case TY_PRIMITIVE:
         {
             switch (ty->primitive_type) {
-                case UNIT:
+                case VOID:
                     append_list_char_slice(&output, "void");
                     break;
                 case BOOL:
