@@ -1,15 +1,11 @@
 #include "ast.h"
 #include "context.h"
 #include "utils.h"
+#include "error.h"
 #include <assert.h>
 
 int type_eq(struct type *l, struct type *r);
 struct list_char show_type(struct type *ty);
-
-struct type_check_error {
-    struct list_char error_message;
-    struct list_char suggestion;
-};
 
 int fn_type_eq(struct function_type *l, struct function_type *r) {
     if (l->params.size != r->params.size) {
@@ -50,10 +46,10 @@ int type_eq(struct type *l, struct type *r) {
     return 0;
 }
 
-int binding_statement_check(struct binding_statement_context *s, struct type_check_error *error)
+int binding_statement_check(struct binding_statement_context *s, struct error *error)
 {
     if (!s->binding_statement->has_type && s->inferred_type == NULL) {
-        append_list_char_slice(&error->error_message, "type annotations needed.");
+        //append_list_char_slice(&error->error_message, "type annotations needed.");
         return 0;
     }
     
@@ -66,14 +62,14 @@ int binding_statement_check(struct binding_statement_context *s, struct type_che
     if (s->binding_statement->has_type
         && !type_eq(s->inferred_type, &s->binding_statement->variable_type))
     {
-        append_list_char_slice(&error->error_message, "mismatch types.");
+        //append_list_char_slice(&error->error_message, "mismatch types.");
         return 0;
     }
 
     return 1;
 }
 
-int type_check_single(struct statement_context *s, struct type_check_error *error)
+int type_check_single(struct statement_context *s, struct error *error)
 {
     switch (s->kind) {
         case BINDING_STATEMENT:
@@ -121,7 +117,7 @@ int type_check_single(struct statement_context *s, struct type_check_error *erro
     UNREACHABLE("type_check_single dropped out of a switch on all kinds of statements.");
 }
 
-int type_check(struct list_statement_context statements, struct type_check_error *error) {
+int type_check(struct list_statement_context statements, struct error *error) {
     for (size_t i = 0; i < statements.size; i++) {
         if (!type_check_single(&statements.data[i], error)) return 0;
     }

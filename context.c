@@ -4,6 +4,7 @@
 #include <string.h>
 #include "utils.h"
 #include "context.h"
+#include "error.h"
 
 #ifdef DEBUG_CONTEXT
 void show_statement_context(struct statement_context *s);
@@ -45,7 +46,7 @@ int get_scoped_variable_type(struct list_scoped_variable *scoped_variables,
 int find_struct_definition(struct global_context *c,
                            struct list_char *struct_name,
                            struct type *out,
-                           struct context_error *err)
+                           struct error *err)
 {
     for (size_t i = 0; i < c->data_types.size; i++) {
         struct type this = c->data_types.data[i];
@@ -59,14 +60,14 @@ int find_struct_definition(struct global_context *c,
         }
     }
     
-    append_list_char_slice(&err->message, "Struct does not exist.");
+    //append_list_char_slice(&err->message, "Struct does not exist.");
     return 0;
 }
 
 int find_enum_definition(struct global_context *c,
                            struct list_char struct_name,
                            struct type *out,
-                           struct context_error *err)
+                           struct error *err)
 {
     for (size_t i = 0; i < c->data_types.size; i++) {
         struct type this = c->data_types.data[i];
@@ -80,14 +81,14 @@ int find_enum_definition(struct global_context *c,
         }
     }
     
-    append_list_char_slice(&err->message, "Struct does not exist.");
+    //append_list_char_slice(&err->message, "Struct does not exist.");
     return 0;
 }
 
 int infer_field_type(struct struct_type s,
                      struct expression *e,
                      struct global_context *c,
-                     struct context_error *err,
+                     struct error *err,
                      struct type *out)
 {
     if (e->kind == LITERAL_EXPRESSION && e->literal.kind == LITERAL_NAME) {
@@ -98,20 +99,20 @@ int infer_field_type(struct struct_type s,
             }
         }
         
-        append_list_char_slice(&err->message, "no type found.");
+        //append_list_char_slice(&err->message, "no type found.");
         return 0;
     }
 
     if (e->kind == BINARY_EXPRESSION) {
         if (e->binary.l->kind != LITERAL_EXPRESSION && e->binary.l->literal.kind != LITERAL_NAME) {
-            append_list_char_slice(&err->message, "Must be a valid field name");
+            //append_list_char_slice(&err->message, "Must be a valid field name");
             return 0;
         }
         
         for (size_t i = 0; i < s.pairs.size; i++) {
             if (list_char_eq(e->binary.l->literal.name, &s.pairs.data[i].field_name)) {
                 if (s.pairs.data[i].field_type->kind != TY_STRUCT) {
-                    append_list_char_slice(&err->message, "Cannot index into a primitive type");
+                    //append_list_char_slice(&err->message, "Cannot index into a primitive type");
                     return 0;
                 }
 
@@ -122,13 +123,13 @@ int infer_field_type(struct struct_type s,
                     return infer_field_type(complete_type.struct_type, e->binary.r, c, err, out);
                 }
                 
-                append_list_char_slice(&err->message, "Unable to infer field type");
+                //append_list_char_slice(&err->message, "Unable to infer field type");
                 return 0;
             } 
         }
     }
 
-    append_list_char_slice(&err->message, "Not sure what happend");
+    //append_list_char_slice(&err->message, "Not sure what happend");
     return 0;
 }
 
@@ -166,7 +167,7 @@ int infer_type(struct expression *e,
                struct list_scoped_variable *scoped_variables,
                struct global_context *c,
                struct type *out,
-               struct context_error *err)
+               struct error *err)
 {
     switch (e->kind) {
         case LITERAL_EXPRESSION:
@@ -277,7 +278,7 @@ int infer_type(struct expression *e,
 
 int include_statement_global_context(struct statement *s,
                                      struct global_context *gc,
-                                     struct context_error *context_error)
+                                     struct error *error)
 {
     // TODO
     return 1;
@@ -285,7 +286,7 @@ int include_statement_global_context(struct statement *s,
 
 int type_declaration_global_context(struct statement *s,
                                     struct global_context *gc,
-                                    struct context_error *context_error)
+                                    struct error *error)
 {
     assert(s->kind == TYPE_DECLARATION_STATEMENT);
     switch (s->type_declaration.type.kind) {
@@ -307,7 +308,7 @@ int type_declaration_global_context(struct statement *s,
 
 int generate_global_context(struct list_statement *s,
                             struct global_context *out,
-                            struct context_error *context_error)
+                            struct error *error)
 {
     if (s->size == 0) {
         return 0;
@@ -317,10 +318,10 @@ int generate_global_context(struct list_statement *s,
         struct statement *current = &s->data[i];
         switch (current->kind) {
             case TYPE_DECLARATION_STATEMENT:
-                if (!type_declaration_global_context(current, out, context_error)) return 0;
+                if (!type_declaration_global_context(current, out, error)) return 0;
                 break;
             case INCLUDE_STATEMENT:
-                if (!include_statement_global_context(current, out, context_error)) return 0;
+                if (!include_statement_global_context(current, out, error)) return 0;
                 break;
             default:
                 break;
@@ -365,7 +366,7 @@ void add_scoped_variable(struct statement_context *c, struct list_scoped_variabl
 int contextualise_statement(struct statement *s,
                             struct global_context *global_context,
                             struct list_scoped_variable *scoped_variables,
-                            struct context_error *context_error,
+                            struct error *error,
                             struct statement_context *out)
 {
     if (s == NULL) {
@@ -376,7 +377,7 @@ int contextualise_statement(struct statement *s,
         case BINDING_STATEMENT:
         {
             struct type *inferred_type = malloc(sizeof(*inferred_type));
-            if (!infer_type(&s->binding_statement.value, scoped_variables, global_context, inferred_type, context_error))
+            if (!infer_type(&s->binding_statement.value, scoped_variables, global_context, inferred_type, error))
             {
                 inferred_type = NULL;
             }
@@ -394,7 +395,7 @@ int contextualise_statement(struct statement *s,
         case RETURN_STATEMENT:
         {
             struct type *inferred_type = malloc(sizeof(*inferred_type));
-            if (!infer_type(&s->expression, scoped_variables, global_context, inferred_type, context_error))
+            if (!infer_type(&s->expression, scoped_variables, global_context, inferred_type, error))
             {
                 inferred_type = NULL;
             }
@@ -434,7 +435,7 @@ int contextualise_statement(struct statement *s,
                                 &s->type_declaration.statements->data[i],
                                 global_context,
                                 &fn_scoped_variables,
-                                context_error,
+                                error,
                                 &c)) 
                         {
                             return 0;
@@ -486,7 +487,7 @@ int contextualise_statement(struct statement *s,
                         &s->statements->data[i],
                         global_context,
                         &block_scoped_variables,
-                        context_error,
+                        error,
                         &c)) 
                 {
                     return 0;
@@ -511,7 +512,7 @@ int contextualise_statement(struct statement *s,
                     s->if_statement.success_statement,
                     global_context,
                     scoped_variables,
-                    context_error,
+                    error,
                     success))
             {
                 return 0;
@@ -521,7 +522,7 @@ int contextualise_statement(struct statement *s,
                 s->if_statement.else_statement,
                 global_context,
                 scoped_variables,
-                context_error,
+                error,
                 else_statement);
             
             *out = (struct statement_context) {
@@ -539,7 +540,7 @@ int contextualise_statement(struct statement *s,
         case ACTION_STATEMENT:
         {
             struct type *inferred_type = malloc(sizeof(*inferred_type));
-            infer_type(&s->expression, scoped_variables, global_context, inferred_type, context_error);
+            infer_type(&s->expression, scoped_variables, global_context, inferred_type, error);
             *out = (struct statement_context) {
                 .kind = s->kind,
                 .global_context = global_context,
@@ -558,7 +559,7 @@ int contextualise_statement(struct statement *s,
                 s->while_loop_statement.do_statement,
                 global_context,
                 scoped_variables,
-                context_error,
+                error,
                 do_statement))
             {
                 return 0;
@@ -606,7 +607,7 @@ int contextualise_statement(struct statement *s,
 
 int contextualise(struct list_statement *s,
                   struct rm_program *out,
-                  struct context_error *context_error)
+                  struct error *error)
 {
     if (s->size == 0) {
         return 0;
@@ -620,12 +621,12 @@ int contextualise(struct list_statement *s,
         .statements = list_create(statement_context, s->size)
     };
 
-    if (!generate_global_context(s, &out->global_context, context_error)) return 0;
+    if (!generate_global_context(s, &out->global_context, error)) return 0;
     struct list_scoped_variable scoped_variables = list_create(scoped_variable, 10);
 
     for (size_t i = 0; i < s->size; i++) {
         struct statement_context c = {0};
-        if (!contextualise_statement(&s->data[i], &out->global_context, &scoped_variables, context_error, &c)) return 0;
+        if (!contextualise_statement(&s->data[i], &out->global_context, &scoped_variables, error, &c)) return 0;
         list_append(&out->statements, c);
     }
     

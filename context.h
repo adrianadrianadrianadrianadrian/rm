@@ -3,6 +3,7 @@
 
 #include "utils.h"
 #include "ast.h"
+#include "error.h"
 
 struct global_context {
     struct list_type fn_types;
@@ -66,10 +67,6 @@ typedef struct statement_context {
 
 struct_list(statement_context);
 
-struct context_error {
-    struct list_char message;
-};
-
 struct rm_program {
     struct global_context global_context;
     struct list_statement_context statements;
@@ -77,7 +74,7 @@ struct rm_program {
 
 int contextualise(struct list_statement *s,
                   struct rm_program *out,
-                  struct context_error *error);
+                  struct error *error);
 
 int get_scoped_variable_type(struct list_scoped_variable *scoped_variables,
                              struct global_context *c,
