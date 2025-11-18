@@ -1,14 +1,14 @@
 #include "error.h"
-#include "lexer.h"
 
-void add_error(struct token_buffer *s, struct error *out, char *message)
+#define NO_COLOUR "\x1B[0m"
+#define RED "\x1B[31m"
+
+void add_error(unsigned int row,
+               unsigned int col,
+               char *file_name,
+               struct error *out,
+               char *message)
 {
-    size_t position = s->current_position;
-    if (s->current_position > 1) {
-        position -= 1;
-    }
-
-    struct token_metadata *tok_metadata = get_token_metadata(s, position);
     struct list_char error_message = list_create(char, 35);
     append_list_char_slice(&error_message, message);
     struct error *boxed = NULL;
@@ -18,7 +18,9 @@ void add_error(struct token_buffer *s, struct error *out, char *message)
     }
 
     struct error err = (struct error) {
-        .token_metadata = tok_metadata,
+        .row = row,
+        .col = row,
+        .file_name = file_name,
         .errored = 1,
         .error_message = error_message,
         .inner = boxed
@@ -33,10 +35,12 @@ void write_error_inner(FILE *f, struct error *err, unsigned int depth)
         return;
     }
 
-    fprintf(f, "%s:%d:%d: error: %s\n",
-        err->token_metadata->file_name,
-        err->token_metadata->row,
-        err->token_metadata->col + 1,
+    fprintf(f, "%s:%d:%d: %serror:%s %s\n",
+        err->file_name,
+        err->row,
+        err->col + 1,
+        RED,
+        NO_COLOUR,
         err->error_message.data);
 
     if (err->inner != NULL) {

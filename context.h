@@ -63,6 +63,7 @@ typedef struct statement_context {
     };
     struct global_context *global_context;
     struct list_scoped_variable scoped_variables;
+    struct statement_metadata *metadata;
 } statement_context;
 
 struct_list(statement_context);

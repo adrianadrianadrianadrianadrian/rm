@@ -6,13 +6,19 @@
 #include <stdio.h>
 
 struct error {
-    struct token_metadata *token_metadata;
+    unsigned int row;
+    unsigned int col;
+    unsigned int errored;
+    char *file_name;
     struct list_char error_message;
-    int errored;
     struct error *inner;
 };
 
-void add_error(struct token_buffer *s, struct error *out, char *message);
+void add_error(unsigned int row,
+               unsigned int col,
+               char *file_name,
+               struct error *out,
+               char *message);
 void write_error(FILE *f, struct error *error);
 
 #endif

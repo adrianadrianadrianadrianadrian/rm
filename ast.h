@@ -281,6 +281,12 @@ struct switch_statement {
 	struct list_case_statement cases;
 };
 
+struct statement_metadata {
+    unsigned int row;
+    unsigned int col;
+    char *file_name;
+};
+
 typedef struct statement {
     enum statement_kind kind;
     union {
@@ -293,6 +299,7 @@ typedef struct statement {
         struct include_statement include_statement;
         struct switch_statement switch_statement;
     };
+    struct statement_metadata metadata;
 } statement;
 
 struct_list(statement);

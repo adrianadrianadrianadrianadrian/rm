@@ -465,7 +465,7 @@ struct token_buffer create_token_buffer(FILE *fstream, char *file_name) {
     };
 }
 
-struct token_metadata *get_token_metadata(struct token_buffer *toks, size_t position)
+struct token_metadata *get_token_metadata(const struct token_buffer *toks, size_t position)
 {
     assert(position <= toks->tokens.size);
     return &toks->tokens.data[position].metadata;

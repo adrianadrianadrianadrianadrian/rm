@@ -32,16 +32,14 @@ fn factorial(input: i32) -> i32 {
 }
 
 fn main() -> i32 {
-    loop_count: mut i32 = 11;
-    i: ?i32 = null;
-    client = struct api_client { port = 8080 };
-    
-    running: bool = false;
-    not_running = !running;
+    let loop_count: mut i32 = 9;
+    let i: ?i32 = null;
+    let client = struct api_client { port = 8080 };
 
-    while (loop_count > 0) {
-        printf("Hello world! %d\n", factorial(loop_count));
-        loop_count = loop_count - 1;
+    if (loop_count > 10) {
+        printf("%d > 10\n", loop_count);
+    } else {
+        printf("%d <= 10\n", loop_count);
     }
 
     return 0;
@@ -80,3 +78,16 @@ fn test(res: enum result) -> void {
 }
 ```
 
+Currently for IO, as you can see, I'm directly including C headers and running functions such as `printf`. This is just a hack to see something happen. I think long term I'm leaning toward having a special struct that's provided by the compiler, called `io`, that'll have the ability to essentially run syscalls on the respective platform. Then any function that wishes to do IO will need to take this struct as a param. The value of this will come from the main function only. Though, there'll be a way to create it out of thin air for dev purposes in non release builds.
+
+e.g.
+```
+fn main(io: struct io, ..) -> i32 {
+    print(io, "Hello, world!\n");
+    return 0;
+}
+
+fn print(io: struct io, message: []u8) {
+    ...
+}
+```

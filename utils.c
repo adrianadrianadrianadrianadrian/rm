@@ -11,8 +11,6 @@ void append_list_char_slice(struct list_char *dest, char *slice) {
         list_append(dest, *slice);
         slice++;
     }
-
-    list_append(dest, '\0');
 }
 
 int list_char_eq(struct list_char *l, struct list_char *r) {

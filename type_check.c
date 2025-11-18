@@ -7,6 +7,13 @@
 int type_eq(struct type *l, struct type *r);
 struct list_char show_type(struct type *ty);
 
+static void add_error_inner(struct statement_metadata *metadata,
+                            struct list_char *error_message,
+                            struct error *out)
+{
+    add_error(metadata->row, metadata->col, metadata->file_name, out, error_message->data);
+}
+
 int fn_type_eq(struct function_type *l, struct function_type *r) {
     if (l->params.size != r->params.size) {
         return 0;
@@ -46,10 +53,12 @@ int type_eq(struct type *l, struct type *r) {
     return 0;
 }
 
-int binding_statement_check(struct binding_statement_context *s, struct error *error)
+int binding_statement_check(struct binding_statement_context *s, struct list_char *error)
 {
     if (!s->binding_statement->has_type && s->inferred_type == NULL) {
-        //append_list_char_slice(&error->error_message, "type annotations needed.");
+        append_list_char_slice(error, "type annotations needed for `");
+        append_list_char_slice(error, s->binding_statement->variable_name.data);
+        append_list_char_slice(error, "`.");
         return 0;
     }
     
@@ -62,18 +71,22 @@ int binding_statement_check(struct binding_statement_context *s, struct error *e
     if (s->binding_statement->has_type
         && !type_eq(s->inferred_type, &s->binding_statement->variable_type))
     {
-        //append_list_char_slice(&error->error_message, "mismatch types.");
+        append_list_char_slice(error, "mismatch types; `");
+        append_list_char_slice(error, s->inferred_type->name->data);
+        append_list_char_slice(error, "` != `");
+        append_list_char_slice(error, s->binding_statement->variable_type.name->data);
+        append_list_char_slice(error, "`.");
         return 0;
     }
 
     return 1;
 }
 
-int type_check_single(struct statement_context *s, struct error *error)
+int type_check_single(struct statement_context *s, struct list_char *error_message)
 {
     switch (s->kind) {
         case BINDING_STATEMENT:
-            return binding_statement_check(&s->binding_statement, error);
+            return binding_statement_check(&s->binding_statement, error_message);
         case TYPE_DECLARATION_STATEMENT:
         {
             switch (s->type_declaration.type.kind) {
@@ -89,7 +102,7 @@ int type_check_single(struct statement_context *s, struct error *error)
                             //     return 0;
                             // }
                         } else {
-                            if (!type_check_single(&s->type_declaration.statements->data[i], error)) {
+                            if (!type_check_single(&s->type_declaration.statements->data[i], error_message)) {
                                 return 0;
                             }
                         }
@@ -117,9 +130,14 @@ int type_check_single(struct statement_context *s, struct error *error)
     UNREACHABLE("type_check_single dropped out of a switch on all kinds of statements.");
 }
 
-int type_check(struct list_statement_context statements, struct error *error) {
+int type_check(struct list_statement_context statements, struct error *out) {
+    struct list_char error_message = list_create(char, 100);
     for (size_t i = 0; i < statements.size; i++) {
-        if (!type_check_single(&statements.data[i], error)) return 0;
+        if (!type_check_single(&statements.data[i], &error_message)) {
+            assert(error_message.size);
+            add_error_inner(statements.data[i].metadata, &error_message, out);
+            return 0;
+        }
     }
     return 1;
 }

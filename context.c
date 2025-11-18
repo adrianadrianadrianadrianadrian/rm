@@ -10,6 +10,13 @@
 void show_statement_context(struct statement_context *s);
 #endif
 
+static void add_error_inner(struct statement_metadata *metadata,
+                            struct list_char *error_message,
+                            struct error *out)
+{
+    add_error(metadata->row, metadata->col, metadata->file_name, out, error_message->data);
+}
+
 struct type *get_type(struct scoped_variable *variable) {
     return variable->defined_type != NULL ? variable->defined_type : variable->inferred_type;
 }
@@ -46,7 +53,7 @@ int get_scoped_variable_type(struct list_scoped_variable *scoped_variables,
 int find_struct_definition(struct global_context *c,
                            struct list_char *struct_name,
                            struct type *out,
-                           struct error *err)
+                           struct list_char *err)
 {
     for (size_t i = 0; i < c->data_types.size; i++) {
         struct type this = c->data_types.data[i];
@@ -60,14 +67,16 @@ int find_struct_definition(struct global_context *c,
         }
     }
     
-    //append_list_char_slice(&err->message, "Struct does not exist.");
+    append_list_char_slice(err, "struct `");
+    append_list_char_slice(err, struct_name->data);
+    append_list_char_slice(err, "` does not exist.");
     return 0;
 }
 
 int find_enum_definition(struct global_context *c,
-                           struct list_char struct_name,
+                           struct list_char *enum_name,
                            struct type *out,
-                           struct error *err)
+                           struct list_char *err)
 {
     for (size_t i = 0; i < c->data_types.size; i++) {
         struct type this = c->data_types.data[i];
@@ -75,20 +84,22 @@ int find_enum_definition(struct global_context *c,
             continue;
         }
 
-        if (list_char_eq(&struct_name, this.name)) {
+        if (list_char_eq(enum_name, this.name)) {
             *out = this;
             return 1;
         }
     }
     
-    //append_list_char_slice(&err->message, "Struct does not exist.");
+    append_list_char_slice(err, "enum `");
+    append_list_char_slice(err, enum_name->data);
+    append_list_char_slice(err, "` does not exist.");
     return 0;
 }
 
 int infer_field_type(struct struct_type s,
                      struct expression *e,
                      struct global_context *c,
-                     struct error *err,
+                     struct list_char *err,
                      struct type *out)
 {
     if (e->kind == LITERAL_EXPRESSION && e->literal.kind == LITERAL_NAME) {
@@ -99,20 +110,20 @@ int infer_field_type(struct struct_type s,
             }
         }
         
-        //append_list_char_slice(&err->message, "no type found.");
+        append_list_char_slice(err, "no type found.");
         return 0;
     }
 
     if (e->kind == BINARY_EXPRESSION) {
         if (e->binary.l->kind != LITERAL_EXPRESSION && e->binary.l->literal.kind != LITERAL_NAME) {
-            //append_list_char_slice(&err->message, "Must be a valid field name");
+            append_list_char_slice(err, "must be a valid field name");
             return 0;
         }
         
         for (size_t i = 0; i < s.pairs.size; i++) {
             if (list_char_eq(e->binary.l->literal.name, &s.pairs.data[i].field_name)) {
                 if (s.pairs.data[i].field_type->kind != TY_STRUCT) {
-                    //append_list_char_slice(&err->message, "Cannot index into a primitive type");
+                    append_list_char_slice(err, "cannot index into a primitive type");
                     return 0;
                 }
 
@@ -123,13 +134,13 @@ int infer_field_type(struct struct_type s,
                     return infer_field_type(complete_type.struct_type, e->binary.r, c, err, out);
                 }
                 
-                //append_list_char_slice(&err->message, "Unable to infer field type");
+                append_list_char_slice(err, "unable to infer field type");
                 return 0;
             } 
         }
     }
 
-    //append_list_char_slice(&err->message, "Not sure what happend");
+    append_list_char_slice(err, "woops, I broke.");
     return 0;
 }
 
@@ -167,7 +178,7 @@ int infer_type(struct expression *e,
                struct list_scoped_variable *scoped_variables,
                struct global_context *c,
                struct type *out,
-               struct error *err)
+               struct list_char *err)
 {
     switch (e->kind) {
         case LITERAL_EXPRESSION:
@@ -195,7 +206,7 @@ int infer_type(struct expression *e,
                 }
                 case LITERAL_ENUM:
                 {
-                    return find_struct_definition(c, e->literal.struct_enum.name, out, err);
+                    return find_enum_definition(c, e->literal.struct_enum.name, out, err);
                 }
                 case LITERAL_STR:
                 case LITERAL_NUMERIC:
@@ -372,15 +383,21 @@ int contextualise_statement(struct statement *s,
     if (s == NULL) {
         return 0;
     }
-
+    
+    struct list_char error_message = list_create(char, 100);
     switch (s->kind) {
         case BINDING_STATEMENT:
         {
             struct type *inferred_type = malloc(sizeof(*inferred_type));
-            if (!infer_type(&s->binding_statement.value, scoped_variables, global_context, inferred_type, error))
+            if (!infer_type(&s->binding_statement.value, scoped_variables, global_context, inferred_type, &error_message))
             {
+                if (error_message.size) {
+                    add_error_inner(&s->metadata, &error_message, error);
+                    return 0;
+                }
                 inferred_type = NULL;
             }
+
             *out = (struct statement_context) {
                 .kind = s->kind,
                 .binding_statement = (struct binding_statement_context) {
@@ -388,17 +405,23 @@ int contextualise_statement(struct statement *s,
                     .inferred_type = inferred_type,
                 },
                 .global_context = global_context,
-                .scoped_variables = copy_scoped_variables(scoped_variables)
+                .scoped_variables = copy_scoped_variables(scoped_variables),
+                .metadata = &s->metadata
             };
             return 1;
         }
         case RETURN_STATEMENT:
         {
             struct type *inferred_type = malloc(sizeof(*inferred_type));
-            if (!infer_type(&s->expression, scoped_variables, global_context, inferred_type, error))
+            if (!infer_type(&s->expression, scoped_variables, global_context, inferred_type, &error_message))
             {
+                if (error_message.size) {
+                    add_error_inner(&s->metadata, &error_message, error);
+                    return 0;
+                }
                 inferred_type = NULL;
             }
+
             *out = (struct statement_context) {
                 .kind = s->kind,
                 .return_statement = (struct return_statement_context) {
@@ -406,7 +429,8 @@ int contextualise_statement(struct statement *s,
                     .inferred_return_type = inferred_type
                 },
                 .global_context = global_context,
-                .scoped_variables = copy_scoped_variables(scoped_variables)
+                .scoped_variables = copy_scoped_variables(scoped_variables),
+                .metadata = &s->metadata
             };
             return 1;
         }
@@ -451,7 +475,8 @@ int contextualise_statement(struct statement *s,
                             .statements = statements
                         },
                         .global_context = global_context,
-                        .scoped_variables = copy_scoped_variables(&fn_scoped_variables)
+                        .scoped_variables = copy_scoped_variables(&fn_scoped_variables),
+                        .metadata = &s->metadata
                     };
                     break;
                 }
@@ -466,7 +491,8 @@ int contextualise_statement(struct statement *s,
                             .statements = NULL
                         },
                         .global_context = global_context,
-                        .scoped_variables = NULL
+                        .scoped_variables = NULL,
+                        .metadata = &s->metadata
                     };
                     break;
                 }
@@ -500,7 +526,8 @@ int contextualise_statement(struct statement *s,
                 .kind = s->kind,
                 .block_statements = statements,
                 .global_context = global_context,
-                .scoped_variables = copy_scoped_variables(scoped_variables)
+                .scoped_variables = copy_scoped_variables(scoped_variables),
+                .metadata = &s->metadata
             };
             return 1;
         }
@@ -533,14 +560,15 @@ int contextualise_statement(struct statement *s,
                     .else_statement = else_exists ? else_statement : NULL
                 },
                 .global_context = global_context,
-                .scoped_variables = copy_scoped_variables(scoped_variables)
+                .scoped_variables = copy_scoped_variables(scoped_variables),
+                .metadata = &s->metadata
             };
             return 1;
         }
         case ACTION_STATEMENT:
         {
             struct type *inferred_type = malloc(sizeof(*inferred_type));
-            infer_type(&s->expression, scoped_variables, global_context, inferred_type, error);
+            infer_type(&s->expression, scoped_variables, global_context, inferred_type, &error_message);
             *out = (struct statement_context) {
                 .kind = s->kind,
                 .global_context = global_context,
@@ -548,7 +576,8 @@ int contextualise_statement(struct statement *s,
                 .action_statement_context = (struct action_statement_context) {
                     .e = &s->expression,
                     .inferred_expression_type = inferred_type
-                }
+                },
+                .metadata = &s->metadata
             };
             return 1;
         }
@@ -572,7 +601,8 @@ int contextualise_statement(struct statement *s,
                     .do_statement = do_statement
                 },
                 .scoped_variables = copy_scoped_variables(scoped_variables),
-                .global_context = global_context
+                .global_context = global_context,
+                .metadata = &s->metadata
             };
             return 1;
         }
@@ -581,7 +611,8 @@ int contextualise_statement(struct statement *s,
             *out = (struct statement_context) {
                 .kind = s->kind,
                 .scoped_variables = copy_scoped_variables(scoped_variables),
-                .global_context = global_context
+                .global_context = global_context,
+                .metadata = &s->metadata
             };
             return 1;
         }
@@ -591,7 +622,8 @@ int contextualise_statement(struct statement *s,
                 .kind = s->kind,
                 .global_context = global_context,
                 .scoped_variables = NULL,
-                .include_statement = s->include_statement
+                .include_statement = s->include_statement,
+                .metadata = &s->metadata
             };
             return 1;
         }
