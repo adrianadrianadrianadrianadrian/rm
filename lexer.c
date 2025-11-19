@@ -217,6 +217,10 @@ int is_special_or_whitespace(char c) {
     return is_special_char(c) || whitespace(c);
 }
 
+int is_newline(char c) {
+    return c == '\n';
+}
+
 struct token basic_token(enum token_type token_type,
                          struct positional_char *pc)
 {
@@ -284,6 +288,15 @@ int next_token(struct file_buffer *b, struct token *out) {
                 return 1;
             }
             case '/': {
+                if (read_file_buffer(b, 1, &test)) {
+                    if (test.value == '/') {
+                        struct list_char comment = list_create(char, 100);
+                        read_until(b, &comment, is_newline, 1);
+                        break;
+                    } else {
+                        seek_back(b, 1);
+                    }
+                }
                 *out = basic_token(DIV, &test);
                 return 1;
             }
