@@ -10,6 +10,8 @@
 void show_statement_context(struct statement_context *s);
 #endif
 
+int check_contextual_soundness(struct rm_program *program, struct error *error);
+
 static void add_error_inner(struct statement_metadata *metadata,
                             struct list_char *error_message,
                             struct error *out)
@@ -668,6 +670,12 @@ int contextualise(struct list_statement *s,
             printf("\n\n");
         }
     #endif
+    
+    return check_contextual_soundness(out, error);
+}
+
+int check_contextual_soundness(struct rm_program *program, struct error *error)
+{
     return 1;
 }
 
