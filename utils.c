@@ -7,10 +7,10 @@ void copy_list_char(struct list_char *dest, struct list_char *src) {
 }
 
 void append_list_char_slice(struct list_char *dest, char *slice) {
-    while (*slice != '\0') {
+    do {
         list_append(dest, *slice);
         slice++;
-    }
+    } while (slice != NULL && *slice != '\0');
 }
 
 int list_char_eq(struct list_char *l, struct list_char *r) {

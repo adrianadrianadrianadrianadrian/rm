@@ -8,10 +8,21 @@ int type_eq(struct type *l, struct type *r);
 struct list_char show_type(struct type *ty);
 
 static void add_error_inner(struct statement_metadata *metadata,
-                            struct list_char *error_message,
+                            char *error_message,
                             struct error *out)
 {
-    add_error(metadata->row, metadata->col, metadata->file_name, out, error_message->data);
+    add_error(metadata->row, metadata->col, metadata->file_name, out, error_message);
+}
+
+struct list_char type_mismatch_error(struct type *expected, struct type *actual)
+{
+    struct list_char output = list_create(char, 50);
+    append_list_char_slice(&output, "mismatch types; expected `");
+    append_list_char_slice(&output, show_type(expected).data);
+    append_list_char_slice(&output, "` but got `");
+    append_list_char_slice(&output, show_type(actual).data);
+    append_list_char_slice(&output, "`.");
+    return output;
 }
 
 int fn_type_eq(struct function_type *l, struct function_type *r) {
@@ -53,91 +64,158 @@ int type_eq(struct type *l, struct type *r) {
     return 0;
 }
 
-int binding_statement_check(struct binding_statement_context *s, struct list_char *error)
+int binding_statement_check(struct statement_context *sc, struct error *error)
 {
+    assert(sc->kind == BINDING_STATEMENT);
+    struct binding_statement_context *s = &sc->binding_statement;
+
     if (!s->binding_statement->has_type && s->inferred_type == NULL) {
-        append_list_char_slice(error, "type annotations needed for `");
-        append_list_char_slice(error, s->binding_statement->variable_name.data);
-        append_list_char_slice(error, "`.");
+        struct list_char message = list_create(char, 100);
+        append_list_char_slice(&message, "type annotations needed for `");
+        append_list_char_slice(&message, s->binding_statement->variable_name.data);
+        append_list_char_slice(&message, "`.");
+        add_error_inner(sc->metadata, message.data, error);
         return 0;
     }
     
     if (s->binding_statement->has_type && s->inferred_type == NULL)
     {
-        // TODO check value is the type declared.
+        // TODO: I think inferred should always be non null. Returning true always for now.
+        //add_error_inner(sc->metadata, "unable to infer type.", error);
         return 1;
     }
     
     if (s->binding_statement->has_type
         && !type_eq(s->inferred_type, &s->binding_statement->variable_type))
     {
-        append_list_char_slice(error, "mismatch types; `");
-        append_list_char_slice(error, s->inferred_type->name->data);
-        append_list_char_slice(error, "` != `");
-        append_list_char_slice(error, s->binding_statement->variable_type.name->data);
-        append_list_char_slice(error, "`.");
+        add_error_inner(sc->metadata,
+                        type_mismatch_error(&s->binding_statement->variable_type, s->inferred_type).data,
+                        error);
         return 0;
     }
 
     return 1;
 }
 
-int type_check_single(struct statement_context *s, struct list_char *error_message)
+void all_return_statements_inner(struct statement_context *s_ctx, struct list_statement_context *out)
+{
+    if (s_ctx == NULL) {
+        return;
+    }
+
+    switch (s_ctx->kind) {
+        case RETURN_STATEMENT:
+        {
+            list_append(out, *s_ctx);
+            return;
+        }
+        case IF_STATEMENT:
+        {
+            all_return_statements_inner(s_ctx->if_statement_context.success_statement, out);
+            all_return_statements_inner(s_ctx->if_statement_context.else_statement, out);
+            return;
+        }
+        case BLOCK_STATEMENT:
+        {
+            for (size_t i = 0; i < s_ctx->block_statements->size; i++) {
+                all_return_statements_inner(&s_ctx->block_statements->data[i], out);
+            }
+            return;
+        }
+        case WHILE_LOOP_STATEMENT:
+        {
+            all_return_statements_inner(s_ctx->while_loop_statement.do_statement, out);
+            return;
+        }
+        case SWITCH_STATEMENT:
+        {
+            TODO("switch_statement is not part of the context yet.");
+            return;
+        }
+        // cases to ignore
+        case BINDING_STATEMENT:
+        case ACTION_STATEMENT:
+        case TYPE_DECLARATION_STATEMENT:
+        case BREAK_STATEMENT:
+        case INCLUDE_STATEMENT:
+            return;
+    }
+    
+    UNREACHABLE("`all_return_statements_inner` fell out of it's switch.");
+}
+
+struct list_statement_context all_return_statements(struct statement_context *s_ctx)
+{
+    struct list_statement_context output = list_create(statement_context, 10);
+    all_return_statements_inner(s_ctx, &output);
+    return output;
+}
+
+int type_check_single(struct statement_context *s, struct error *error)
 {
     switch (s->kind) {
         case BINDING_STATEMENT:
-            return binding_statement_check(&s->binding_statement, error_message);
+            return binding_statement_check(s, error);
         case TYPE_DECLARATION_STATEMENT:
         {
-            switch (s->type_declaration.type.kind) {
+            switch (s->type_declaration.type.kind)
+            {
                 case TY_FUNCTION:
                 {
-                    for (size_t i = 0; i < s->type_declaration.statements->size; i++) {
-                        struct statement_context s_ctx = s->type_declaration.statements->data[i];
-                        if (s->type_declaration.statements->data[i].kind == RETURN_STATEMENT) {
-                            // need to find all nested returns
-                            // struct return_statement_context ctx = s_ctx.return_statement;
-                            // if (!type_eq(ctx.inferred_return_type, s->type_declaration.type.function_type.return_type)) {
-                            //     printf("return type is not correct...");
-                            //     return 0;
-                            // }
-                        } else {
-                            if (!type_check_single(&s->type_declaration.statements->data[i], error_message)) {
-                                return 0;
+                    struct type *expected_return_type = s->type_declaration.type.function_type.return_type;
+                    struct list_statement_context *body = s->type_declaration.statements;
+
+                    for (size_t i = 0; i < body->size; i++) {
+                        struct list_statement_context return_statements = all_return_statements(&body->data[i]);
+                        if (return_statements.size) {
+                            for (size_t j = 0; j < return_statements.size; j++) {
+                                struct statement_context *this = &return_statements.data[j];
+                                struct type *actual = this->return_statement.inferred_return_type;
+
+                                if (actual == NULL) {
+                                    // TODO: ties into the above mentioned todo regarding inferred types.
+                                    continue;
+                                }
+
+                                if (!type_eq(expected_return_type, actual)) {
+                                    add_error_inner(this->metadata,
+                                                    type_mismatch_error(expected_return_type, actual).data,
+                                                    error);
+                                    return 0;
+                                }
                             }
+                        } else {
+                            if (!type_check_single(&s->type_declaration.statements->data[i], error)) return 0;
                         }
                     }
                     break;
                 }
                 case TY_ENUM:
                 case TY_STRUCT:
-                case TY_PRIMITIVE:
                     break;
+                case TY_PRIMITIVE:
+                    UNREACHABLE("type_check_single::TYPE_DECLARATION_STATEMENT::TY_PRIMITIVE");
             }
             return 1;
         }
-        case BREAK_STATEMENT:
-        case SWITCH_STATEMENT:
-        case INCLUDE_STATEMENT:
-        case ACTION_STATEMENT:
         case IF_STATEMENT:
-        case RETURN_STATEMENT:
+        case SWITCH_STATEMENT:
         case BLOCK_STATEMENT:
         case WHILE_LOOP_STATEMENT:
+        case ACTION_STATEMENT:
+        case RETURN_STATEMENT:
+        // cases to ignore
+        case INCLUDE_STATEMENT:
+        case BREAK_STATEMENT:
             return 1;
     }
 
     UNREACHABLE("type_check_single dropped out of a switch on all kinds of statements.");
 }
 
-int type_check(struct list_statement_context statements, struct error *out) {
-    struct list_char error_message = list_create(char, 100);
+int type_check(struct list_statement_context statements, struct error *error) {
     for (size_t i = 0; i < statements.size; i++) {
-        if (!type_check_single(&statements.data[i], &error_message)) {
-            assert(error_message.size);
-            add_error_inner(statements.data[i].metadata, &error_message, out);
-            return 0;
-        }
+        if (!type_check_single(&statements.data[i], error)) return 0;
     }
     return 1;
 }

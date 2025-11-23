@@ -19,6 +19,7 @@ void add_error(unsigned int row,
                char *file_name,
                struct error *out,
                char *message);
+
 void write_error(FILE *f, struct error *error);
 
 #endif
