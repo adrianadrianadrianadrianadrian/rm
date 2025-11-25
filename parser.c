@@ -1227,7 +1227,10 @@ int parse_while_loop_statement(struct token_buffer *s, struct statement *out, st
     return 1;
 }
 
-int parse_type_declaration(struct token_buffer *s, struct statement *out, struct error *error) {
+int parse_type_declaration(struct token_buffer *s,
+                           struct statement *out,
+                           struct error *error)
+{
     struct statement_metadata metadata = statement_metadata(s);
     struct type type = {0};
     
@@ -1344,6 +1347,7 @@ int parse_rm_file(struct token_buffer *s,
         if (parse_top_level_statement(s, &statement, error)) {
             list_append(&statements, statement);
         } else {
+            //add_error_inner(s, error, "not allowed on the top level.");
             return 0;
         }
     }

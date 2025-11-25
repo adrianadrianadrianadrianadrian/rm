@@ -35,7 +35,7 @@ void write_error_inner(FILE *f, struct error *err, unsigned int depth)
         return;
     }
 
-    fprintf(f, "%s:%d:%d: %serror:%s %s\n",
+    fprintf(f, "%s:%d:%d: %sERROR:%s %s\n",
         err->file_name,
         err->row,
         err->col + 1,

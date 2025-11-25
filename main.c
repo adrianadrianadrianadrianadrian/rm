@@ -29,6 +29,6 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    generate_c(&program);
+    //generate_c(&program);
     return 0;
 }
