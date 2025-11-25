@@ -912,6 +912,12 @@ int check_return_statement_contextual_soundness(struct statement_context *ctx,
     return 1;
 }
 
+typedef struct string {
+    struct list_char name;
+} string;
+
+struct_list(string);
+
 int check_struct_soundness(struct type *type,
                            struct global_context *global_context,
                            struct list_char *error)
@@ -932,7 +938,24 @@ int check_struct_soundness(struct type *type,
         return 0;
     }
     
-    // check for duplicate fields..
+    struct list_string visited = list_create(string, 10);
+    struct list_key_type_pair pairs = type->struct_type.pairs;
+    for (size_t i = 0; i < pairs.size; i++) {
+        struct string field_name = (struct string) {
+            .name = pairs.data[i].field_name
+        };
+        
+        for (size_t j = 0; j < visited.size; j++) {
+            if (list_char_eq(&visited.data[j].name, &field_name.name)) {
+                append_list_char_slice(error, "field `");
+                append_list_char_slice(error, field_name.name.data);
+                append_list_char_slice(error, "` already exists on struct.");
+                return 0;
+            }
+        }
+
+        list_append(&visited, field_name);
+    }
 
     return 1;
 }
