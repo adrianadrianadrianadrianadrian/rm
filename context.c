@@ -912,13 +912,27 @@ int check_return_statement_contextual_soundness(struct statement_context *ctx,
     return 1;
 }
 
-int check_struct_soundness(struct struct_type type,
+int check_struct_soundness(struct type *type,
                            struct global_context *global_context,
-                           struct error *error)
+                           struct list_char *error)
 {
-    if (type.predefined) {
-        return 1;
+    assert(type->kind == TY_STRUCT);
+    int struct_exists = 0;
+    for (size_t i = 0; i < global_context->data_types.size; i++) {
+        if (list_char_eq(type->name, global_context->data_types.data[i].name)) {
+            struct_exists = 1;
+            break;
+        }
     }
+
+    if (type->struct_type.predefined && !struct_exists) {
+        append_list_char_slice(error, "struct `");
+        append_list_char_slice(error, type->name->data);
+        append_list_char_slice(error, "` not found.");
+        return 0;
+    }
+    
+    // check for duplicate fields..
 
     return 1;
 }
@@ -984,7 +998,14 @@ int check_contextual_soundness(struct rm_program *program, struct error *error)
                     }
                     case TY_STRUCT:
                     {
-                        if (!check_struct_soundness(ctx.type_declaration.type.struct_type, &program->global_context, error)) return 0;
+                        struct list_char error_message = list_create(char, 100);
+                        if (!check_struct_soundness(&ctx.type_declaration.type,
+                                                    &program->global_context,
+                                                    &error_message))
+                        {
+                            add_error_inner(ctx.metadata, error_message.data, error);
+                            return 0;
+                        }
                         break;
                     }
                     case TY_ENUM:
