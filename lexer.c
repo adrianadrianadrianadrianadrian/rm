@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "utils.h"
+#include <time.h>
 
 struct file_buffer create_file_buffer(FILE *fstream, char *file_name) {
     #define tmp_buf_size 1024
@@ -462,6 +463,7 @@ int next_token(struct file_buffer *b, struct token *out) {
 }
 
 struct token_buffer create_token_buffer(FILE *fstream, char *file_name) {
+    clock_t start = clock();
     struct file_buffer b = create_file_buffer(fstream, file_name);
     struct list_token tokens = list_create(token, b.size);
     struct token tok;
@@ -469,6 +471,10 @@ struct token_buffer create_token_buffer(FILE *fstream, char *file_name) {
     while (next_token(&b, &tok)) {
         list_append(&tokens, tok);
     }
+
+    clock_t end = clock();
+    float ms = ((float)(end - start) * 1000000) / CLOCKS_PER_SEC;
+    printf("lexer: %d us\n", (int)ms);
 
     return (struct token_buffer) {
         .tokens = tokens,

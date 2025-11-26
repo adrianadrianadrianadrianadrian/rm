@@ -7,6 +7,7 @@
 #include "lexer.h"
 #include "error.h"
 #include "parser.h"
+#include <time.h>
 
 #define parser_t int (*)(struct token_buffer *, void *, struct error *error)
 int try_parse(struct token_buffer *s,
@@ -1340,6 +1341,7 @@ int parse_rm_file(struct token_buffer *s,
                   struct list_statement *out,
                   struct error *error)
 {
+    clock_t start = clock();
     struct list_statement statements = list_create(statement, 10);
 
     while (s->current_position < s->size) {
@@ -1351,6 +1353,10 @@ int parse_rm_file(struct token_buffer *s,
             return 0;
         }
     }
+
+    clock_t end = clock();
+    float ms = ((float)(end - start) * 1000000) / CLOCKS_PER_SEC;
+    printf("parser: %d us\n", (int)ms);
 
     *out = statements;
     return 1;

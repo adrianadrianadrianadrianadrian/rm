@@ -6,6 +6,7 @@
 #include "utils.h"
 #include "context.h"
 #include "error.h"
+#include <time.h>
 
 #ifdef DEBUG_CONTEXT
 void show_statement_context(struct statement_context *s);
@@ -644,6 +645,7 @@ int contextualise(struct list_statement *s,
                   struct rm_program *out,
                   struct error *error)
 {
+    clock_t start = clock();
     if (s->size == 0) {
         return 0;
     }
@@ -672,62 +674,19 @@ int contextualise(struct list_statement *s,
         }
     #endif
     
-    return check_contextual_soundness(out, error);
+    int result = check_contextual_soundness(out, error);
+    clock_t end = clock();
+    float ms = ((float)(end - start) * 1000000) / CLOCKS_PER_SEC;
+    printf("contextualise: %d us\n", (int)ms);
+    return result;
 }
 
-int check_statement_soundness(struct statement_context *ctx,
-                              struct error *error);
+int check_statement_soundness(struct statement_context *ctx, struct error *error);
+
 int check_expression_soundness(struct expression *e,
                                struct global_context *global_context,
                                struct list_scoped_variable *scoped_variables,
                                struct list_char *error);
-
-int expression_is_boolean(struct expression *e,
-                          struct global_context *global_context,
-                          struct list_scoped_variable *scoped_variables)
-{
-    switch (e->kind) {
-        case UNARY_EXPRESSION:
-        {
-            switch (e->unary.unary_operator) {
-                case BANG_UNARY:
-                    return expression_is_boolean(e->unary.expression, global_context, scoped_variables);
-                default:
-                    return 0;
-            }
-        }
-        case LITERAL_EXPRESSION:
-        {
-            switch (e->literal.kind) {
-                case LITERAL_BOOLEAN:
-                    return 1;
-                default:
-                    return 0;
-            }
-        }
-        case BINARY_EXPRESSION:
-        {
-            switch (e->binary.binary_op) {
-                case OR_BINARY:
-                case AND_BINARY:
-                case EQUAL_TO_BINARY:
-                {
-                    return expression_is_boolean(e->binary.l, global_context, scoped_variables)
-                        || expression_is_boolean(e->binary.r, global_context, scoped_variables);
-                }
-                default:
-                    return 0;
-            }
-        }
-        case GROUP_EXPRESSION:
-            return expression_is_boolean(e->grouped, global_context, scoped_variables);
-        case FUNCTION_EXPRESSION:
-        case VOID_EXPRESSION:
-            return 0;
-    }
-    
-    UNREACHABLE("dropped out of expression_is_boolean switch");
-}
 
 int check_literal_expression_soundness(struct literal_expression *e,
                                        struct global_context *global_context,
@@ -765,7 +724,7 @@ int check_literal_expression_soundness(struct literal_expression *e,
                     for (size_t p = 0; p < pairs->size; p++) {
                         int found = 0;
                         for (size_t l = 0; l < e->struct_enum.key_expr_pairs.size; l++) {
-                            struct key_expression *literal_pair = &e->struct_enum.key_expr_pairs.data[i];
+                            struct key_expression *literal_pair = &e->struct_enum.key_expr_pairs.data[l];
                             if (list_char_eq(literal_pair->key, &pairs->data[p].field_name)) {
                                 found = 1;
                                 if (!check_expression_soundness(literal_pair->expression,
@@ -804,24 +763,76 @@ int check_literal_expression_soundness(struct literal_expression *e,
     UNREACHABLE("dropped out of check_literal_expression_soundnes switch.");
 }
 
-int check_unary_expression_soundness(struct unary_expression *e,
-                                     struct global_context *global_context,
-                                     struct list_scoped_variable *scoped_variables,
-                                     struct list_char *error)
+int expression_is_literal_name(struct expression *e)
 {
-    switch (e->unary_operator) {
-        case BANG_UNARY:
+    return e->kind == LITERAL_EXPRESSION && e->literal.kind == LITERAL_NAME;
+}
+
+int check_binary_expression_soundness(struct binary_expression *e,
+                                      struct global_context *global_context,
+                                      struct list_scoped_variable *scoped_variables,
+                                      struct list_char *error)
+{
+    switch (e->binary_op) {
+        case DOT_BINARY:
         {
-            if (!expression_is_boolean(e->expression, global_context, scoped_variables)) {
-                append_list_char_slice(error, "expression must be a boolean value to use the `!` unary operator.");
+            if (!expression_is_literal_name(e->l)) {
+                append_list_char_slice(error, "the left expression must be a struct or enum.");
                 return 0;
             }
+
+            struct list_char *data_name = e->l->literal.name;
+            struct scoped_variable *ref = NULL;
+            for (size_t i = 0; i < scoped_variables->size; i++) {
+                if (list_char_eq(data_name, &scoped_variables->data[i].name)) {
+                    ref = &scoped_variables->data[i];
+                    break;
+                }
+            }
+
+            if (!ref) {
+                append_list_char_slice(error, "`");
+                append_list_char_slice(error, data_name->data);
+                append_list_char_slice(error, "` does not exist.");
+                return 0;
+            }
+            
+            if (ref->inferred_type->kind != TY_STRUCT && ref->inferred_type->kind != TY_ENUM) {
+                append_list_char_slice(error, "cannot index into `");
+                append_list_char_slice(error, data_name->data);
+                append_list_char_slice(error, "`.");
+                return 0;
+            }
+            
+            if (!expression_is_literal_name(e->r)) {
+                append_list_char_slice(error, "invalid expression.");
+                return 0;
+            }
+
+            struct list_char *field_name = e->r->literal.name;
+            int found = 0;
+            struct list_key_type_pair *pairs = &ref->inferred_type->struct_type.pairs;
+            for (size_t i = 0; i < pairs->size; i++) {
+                if (list_char_eq(field_name, &pairs->data[i].field_name)) {
+                    found = 1;
+                    break;
+                }
+            }
+            
+            if (!found) {
+                append_list_char_slice(error, "`");
+                append_list_char_slice(error, field_name->data);
+                append_list_char_slice(error, "` does not exist on `.");
+                append_list_char_slice(error, ref->name.data);
+                append_list_char_slice(error, "`.");
+                return 0;
+            }
+
+            return 1;
         }
-        case STAR_UNARY:
-        case MINUS_UNARY:
-            break;
+        default:
+            return 1;
     }
-    return 1;
 }
 
 int check_expression_soundness(struct expression *e,
@@ -831,84 +842,18 @@ int check_expression_soundness(struct expression *e,
 {
     switch (e->kind) {
         case UNARY_EXPRESSION:
-            return check_unary_expression_soundness(&e->unary, global_context, scoped_variables, error);
+            return check_expression_soundness(e->unary.expression, global_context, scoped_variables, error);
         case LITERAL_EXPRESSION:
             return check_literal_expression_soundness(&e->literal, global_context, scoped_variables, error);
-        case BINARY_EXPRESSION:
         case GROUP_EXPRESSION:
+            return check_expression_soundness(e->grouped, global_context, scoped_variables, error);
+        case BINARY_EXPRESSION:
+            return check_binary_expression_soundness(&e->binary, global_context, scoped_variables, error);
         case FUNCTION_EXPRESSION:
         case VOID_EXPRESSION:
             return 1;
     }
 
-    return 1;
-}
-
-int check_binding_statement_contextual_soundness(struct statement_context *ctx, struct error *error)
-{
-    assert(ctx->kind == BINDING_STATEMENT);
-    struct list_char error_message = list_create(char, 100);
-
-    for (size_t i = 0; i < ctx->scoped_variables.size; i++) {
-        struct list_char *binding_name = &ctx->binding_statement.binding_statement->variable_name;
-        if (list_char_eq(&ctx->scoped_variables.data[i].name, binding_name))
-        {
-            append_list_char_slice(&error_message, "`");
-            append_list_char_slice(&error_message, binding_name->data);
-            append_list_char_slice(&error_message, "` is already defined in this scope.");
-            add_error_inner(ctx->metadata, error_message.data, error);
-            return 0;
-        }
-    }
-
-    if (!check_expression_soundness(&ctx->binding_statement.binding_statement->value,
-                                    ctx->global_context,
-                                    &ctx->scoped_variables,
-                                    &error_message))
-    {
-        add_error_inner(ctx->metadata, error_message.data, error);
-        return 0;
-    }
-
-    return 1;
-}
-
-int check_if_statement_contextual_soundness(struct statement_context *ctx, struct error *error)
-{
-    assert(ctx->kind == IF_STATEMENT);
-    struct if_statement_context *if_ctx = &ctx->if_statement_context;
-    struct list_char error_message = list_create(char, 100);
-
-    if (!check_expression_soundness(&if_ctx->condition,
-                                    ctx->global_context,
-                                    &ctx->scoped_variables,
-                                    &error_message))
-    {
-        add_error_inner(ctx->metadata, error_message.data, error);
-        return 0;
-    }
-    
-    if (!check_statement_soundness(if_ctx->success_statement, error)) return 0;
-    if (!check_statement_soundness(if_ctx->else_statement, error)) return 0;
-
-    return 1;
-}
-
-int check_return_statement_contextual_soundness(struct statement_context *ctx,
-                                                struct error *error)
-{
-    assert(ctx->kind == RETURN_STATEMENT);
-    struct list_char error_message = list_create(char, 100);
-
-    if (!check_expression_soundness(ctx->return_statement.e,
-                                    ctx->global_context,
-                                    &ctx->scoped_variables,
-                                    &error_message))
-    {
-        add_error_inner(ctx->metadata, error_message.data, error);
-        return 0;
-    }
-    
     return 1;
 }
 
@@ -923,19 +868,17 @@ int check_struct_soundness(struct type *type,
                            struct list_char *error)
 {
     assert(type->kind == TY_STRUCT);
-    int struct_exists = 0;
+    int struct_count = 0;
     for (size_t i = 0; i < global_context->data_types.size; i++) {
         if (list_char_eq(type->name, global_context->data_types.data[i].name)) {
-            struct_exists = 1;
-            break;
+            struct_count += 1;
+            if (struct_count > 1) {
+                append_list_char_slice(error, "`struct ");
+                append_list_char_slice(error, type->name->data);
+                append_list_char_slice(error, "` already exists.");
+                return 0;
+            }
         }
-    }
-
-    if (type->struct_type.predefined && !struct_exists) {
-        append_list_char_slice(error, "struct `");
-        append_list_char_slice(error, type->name->data);
-        append_list_char_slice(error, "` not found.");
-        return 0;
     }
     
     struct list_string visited = list_create(string, 10);
@@ -964,11 +907,7 @@ int check_enum_soundness(struct enum_type type,
                          struct global_context *global_context,
                          struct error *error)
 {
-    if (type.predefined) {
-        return 1;
-    }
-
-    return 1;
+    TODO("check_enum_soundness");
 }
 
 int check_fn_soundness(struct type_declaration_statement_context *type_declaration,
@@ -982,18 +921,136 @@ int check_fn_soundness(struct type_declaration_statement_context *type_declarati
     return 1;
 }
 
+int check_binding_statement_soundness(struct statement_context *ctx, struct error *error)
+{
+    assert(ctx->kind == BINDING_STATEMENT);
+    struct list_char error_message = list_create(char, 100);
+
+    for (size_t i = 0; i < ctx->scoped_variables.size; i++) {
+        struct list_char *binding_name = &ctx->binding_statement.binding_statement->variable_name;
+        if (list_char_eq(&ctx->scoped_variables.data[i].name, binding_name))
+        {
+            append_list_char_slice(&error_message, "`");
+            append_list_char_slice(&error_message, binding_name->data);
+            append_list_char_slice(&error_message, "` is already defined in this scope.");
+            add_error_inner(ctx->metadata, error_message.data, error);
+            return 0;
+        }
+    }
+
+    if (!check_expression_soundness(&ctx->binding_statement.binding_statement->value,
+                                    ctx->global_context,
+                                    &ctx->scoped_variables,
+                                    &error_message))
+    {
+        add_error_inner(ctx->metadata, error_message.data, error);
+        return 0;
+    }
+
+    return 1;
+}
+
+int check_if_statement_soundness(struct statement_context *ctx, struct error *error)
+{
+    assert(ctx->kind == IF_STATEMENT);
+    struct if_statement_context *if_ctx = &ctx->if_statement_context;
+    struct list_char error_message = list_create(char, 100);
+
+    if (!check_expression_soundness(&if_ctx->condition,
+                                    ctx->global_context,
+                                    &ctx->scoped_variables,
+                                    &error_message))
+    {
+        add_error_inner(ctx->metadata, error_message.data, error);
+        return 0;
+    }
+    
+    if (!check_statement_soundness(if_ctx->success_statement, error)) return 0;
+    if (!check_statement_soundness(if_ctx->else_statement, error)) return 0;
+
+    return 1;
+}
+
+int check_return_statement_soundness(struct statement_context *ctx,
+                                     struct error *error)
+{
+    assert(ctx->kind == RETURN_STATEMENT);
+    struct list_char error_message = list_create(char, 100);
+
+    if (!check_expression_soundness(ctx->return_statement.e,
+                                    ctx->global_context,
+                                    &ctx->scoped_variables,
+                                    &error_message))
+    {
+        add_error_inner(ctx->metadata, error_message.data, error);
+        return 0;
+    }
+    
+    return 1;
+}
+
+int check_block_statement_soundness(struct statement_context *ctx,
+                                    struct error *error)
+{
+    assert(ctx->kind == BLOCK_STATEMENT);
+    for (size_t i = 0; i < ctx->block_statements->size; i++) {
+        if (!check_statement_soundness(&ctx->block_statements->data[i], error)) return 0;
+    }
+    return 1;
+}
+
+int check_action_statement_soundness(struct statement_context *ctx,
+                                     struct error *error)
+{
+    assert(ctx->kind == ACTION_STATEMENT);
+    struct list_char error_message = list_create(char, 100);
+    if (!check_expression_soundness(ctx->action_statement_context.e,
+                                    ctx->global_context,
+                                    &ctx->scoped_variables,
+                                    &error_message))
+    {
+        add_error_inner(ctx->metadata, error_message.data, error);
+        return 0;
+    }
+    return 1;
+}
+
+int check_while_statement_soundness(struct statement_context *ctx, struct error *error)
+{
+    assert(ctx->kind == WHILE_LOOP_STATEMENT);
+    struct while_loop_statement_context *while_ctx = &ctx->while_loop_statement;
+    struct list_char error_message = list_create(char, 100);
+
+    if (!check_expression_soundness(&while_ctx->condition,
+                                    ctx->global_context,
+                                    &ctx->scoped_variables,
+                                    &error_message))
+    {
+        add_error_inner(ctx->metadata, error_message.data, error);
+        return 0;
+    }
+    
+    if (!check_statement_soundness(while_ctx->do_statement, error)) return 0;
+
+    return 1;
+}
+
 int check_statement_soundness(struct statement_context *ctx,
                               struct error *error)
 {
     switch (ctx->kind) {
         case RETURN_STATEMENT:
-            return check_return_statement_contextual_soundness(ctx, error);
+            return check_return_statement_soundness(ctx, error);
         case BINDING_STATEMENT:
-            return check_binding_statement_contextual_soundness(ctx, error);
+            return check_binding_statement_soundness(ctx, error);
         case IF_STATEMENT:
+            return check_if_statement_soundness(ctx, error);
         case BLOCK_STATEMENT:
+            return check_block_statement_soundness(ctx, error);
         case ACTION_STATEMENT:
+            return check_action_statement_soundness(ctx, error);
         case WHILE_LOOP_STATEMENT:
+            return check_while_statement_soundness(ctx, error);
         case BREAK_STATEMENT:
         case SWITCH_STATEMENT:
             return 0;
@@ -1033,7 +1090,14 @@ int check_contextual_soundness(struct rm_program *program, struct error *error)
                     }
                     case TY_ENUM:
                     {
-                        if (!check_enum_soundness(ctx.type_declaration.type.enum_type, &program->global_context, error)) return 0;
+                        struct list_char error_message = list_create(char, 100);
+                        if (!check_enum_soundness(ctx.type_declaration.type.enum_type,
+                                                  &program->global_context,
+                                                  error))
+                        {
+                            add_error_inner(ctx.metadata, error_message.data, error);
+                            return 0;
+                        }
                         break;
                     }
                     case TY_PRIMITIVE:

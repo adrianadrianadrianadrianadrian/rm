@@ -64,6 +64,53 @@ int type_eq(struct type *l, struct type *r) {
     return 0;
 }
 
+int expression_is_boolean(struct expression *e,
+                          struct global_context *global_context,
+                          struct list_scoped_variable *scoped_variables)
+{
+    switch (e->kind) {
+        case UNARY_EXPRESSION:
+        {
+            switch (e->unary.unary_operator) {
+                case BANG_UNARY:
+                    return expression_is_boolean(e->unary.expression, global_context, scoped_variables);
+                default:
+                    return 0;
+            }
+        }
+        case LITERAL_EXPRESSION:
+        {
+            switch (e->literal.kind) {
+                case LITERAL_BOOLEAN:
+                    return 1;
+                default:
+                    return 0;
+            }
+        }
+        case BINARY_EXPRESSION:
+        {
+            switch (e->binary.binary_op) {
+                case OR_BINARY:
+                case AND_BINARY:
+                case EQUAL_TO_BINARY:
+                {
+                    return expression_is_boolean(e->binary.l, global_context, scoped_variables)
+                        || expression_is_boolean(e->binary.r, global_context, scoped_variables);
+                }
+                default:
+                    return 0;
+            }
+        }
+        case GROUP_EXPRESSION:
+            return expression_is_boolean(e->grouped, global_context, scoped_variables);
+        case FUNCTION_EXPRESSION:
+        case VOID_EXPRESSION:
+            return 0;
+    }
+    
+    UNREACHABLE("dropped out of expression_is_boolean switch");
+}
+
 int binding_statement_check(struct statement_context *sc, struct error *error)
 {
     assert(sc->kind == BINDING_STATEMENT);
