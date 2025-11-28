@@ -1356,7 +1356,7 @@ int parse_rm_file(struct token_buffer *s,
 
     clock_t end = clock();
     float ms = ((float)(end - start) * 1000000) / CLOCKS_PER_SEC;
-    printf("parser: %d us\n", (int)ms);
+    //printf("parser: %d us\n", (int)ms);
 
     *out = statements;
     return 1;

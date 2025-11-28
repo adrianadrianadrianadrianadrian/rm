@@ -677,7 +677,7 @@ int contextualise(struct list_statement *s,
     int result = check_contextual_soundness(out, error);
     clock_t end = clock();
     float ms = ((float)(end - start) * 1000000) / CLOCKS_PER_SEC;
-    printf("contextualise: %d us\n", (int)ms);
+    //printf("contextualise: %d us\n", (int)ms);
     return result;
 }
 
@@ -744,6 +744,7 @@ int check_literal_expression_soundness(struct literal_expression *e,
                             append_list_char_slice(error, "` is missing.");
                             return 0;
                         }
+                        // TODO: check duplicate fields
                     }
                     
                     return 1;

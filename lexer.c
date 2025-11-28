@@ -474,7 +474,7 @@ struct token_buffer create_token_buffer(FILE *fstream, char *file_name) {
 
     clock_t end = clock();
     float ms = ((float)(end - start) * 1000000) / CLOCKS_PER_SEC;
-    printf("lexer: %d us\n", (int)ms);
+    //printf("lexer: %d us\n", (int)ms);
 
     return (struct token_buffer) {
         .tokens = tokens,
