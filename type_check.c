@@ -3,6 +3,7 @@
 #include "utils.h"
 #include "error.h"
 #include <assert.h>
+#include <string.h>
 
 int type_eq(struct type *l, struct type *r);
 struct list_char show_type(struct type *ty);
@@ -316,6 +317,8 @@ int fn_type_eq(struct function_type *l, struct function_type *r) {
 int type_eq(struct type *l, struct type *r) {
     assert(l);
     assert(r);
+    assert(l->kind != 0);
+    assert(r->kind != 0);
 
     if (l->kind != r->kind) {
         return 0;
@@ -476,43 +479,29 @@ int type_check_single(struct statement_context *s, struct error *error)
             return binding_statement_check(s, error);
         case TYPE_DECLARATION_STATEMENT:
         {
-            switch (s->type_declaration.type.kind)
-            {
-                case TY_FUNCTION:
-                {
-                    struct type *expected_return_type = s->type_declaration.type.function_type.return_type;
-                    struct list_statement_context *body = s->type_declaration.statements;
+            if (s->type_declaration.type.kind != TY_FUNCTION) return 1;
+            struct type *expected_return_type = s->type_declaration.type.function_type.return_type;
+            struct list_statement_context *body = s->type_declaration.statements;
 
-                    for (size_t i = 0; i < body->size; i++) {
-                        struct list_statement_context return_statements = all_return_statements(&body->data[i]);
-                        if (return_statements.size) {
-                            for (size_t j = 0; j < return_statements.size; j++) {
-                                struct statement_context *this = &return_statements.data[j];
-                                struct type *actual = this->return_statement.inferred_return_type;
+            for (size_t i = 0; i < body->size; i++) {
+                struct list_statement_context return_statements = all_return_statements(&body->data[i]);
+                if (return_statements.size) {
+                    for (size_t j = 0; j < return_statements.size; j++) {
+                        struct statement_context *this = &return_statements.data[j];
+                        struct type *actual = this->return_statement.inferred_return_type;
+                        assert(this->kind != 0);
+                        assert(actual->kind != 0);
 
-                                if (actual == NULL) {
-                                    // TODO: ties into the above mentioned todo regarding inferred types.
-                                    continue;
-                                }
-
-                                if (!type_eq(expected_return_type, actual)) {
-                                    add_error_inner(this->metadata,
-                                                    type_mismatch_error(expected_return_type, actual).data,
-                                                    error);
-                                    return 0;
-                                }
-                            }
-                        } else {
-                            if (!type_check_single(&s->type_declaration.statements->data[i], error)) return 0;
+                        if (!type_eq(expected_return_type, actual)) {
+                            add_error_inner(this->metadata,
+                                            type_mismatch_error(expected_return_type, actual).data,
+                                            error);
+                            return 0;
                         }
                     }
-                    break;
+                } else {
+                    if (!type_check_single(&s->type_declaration.statements->data[i], error)) return 0;
                 }
-                case TY_ENUM:
-                case TY_STRUCT:
-                    break;
-                case TY_PRIMITIVE:
-                    UNREACHABLE("type_check_single::TYPE_DECLARATION_STATEMENT::TY_PRIMITIVE");
             }
             return 1;
         }
@@ -537,6 +526,14 @@ int infer_expression_type(struct expression *e,
                           struct type *out,
                           struct error *error)
 {
+    if (e->kind == VOID_EXPRESSION) {
+        *out = (struct type) {
+            .kind = TY_PRIMITIVE,
+            .primitive_type = VOID
+        };
+        return 1;
+    }
+
     return 1;
 }
 
@@ -582,7 +579,7 @@ int add_type_information(struct statement_context *statement, struct error *erro
         }
         case TYPE_DECLARATION_STATEMENT:
         {
-            if (statement->type_declaration.type.kind != TY_FUNCTION) return 0;
+            if (statement->type_declaration.type.kind != TY_FUNCTION) return 1;
             for (size_t i = 0; i < statement->type_declaration.statements->size; i++) {
                 if (!add_type_information(&statement->type_declaration.statements->data[i], error)) return 0;
             }
@@ -590,10 +587,31 @@ int add_type_information(struct statement_context *statement, struct error *erro
         }
         case BINDING_STATEMENT:
         {
-            return 0;
+            struct type *inferred_type = malloc(sizeof(*inferred_type));
+            if (!infer_expression_type(&statement->binding_statement.binding_statement->value,
+                                       statement->global_context,
+                                       &statement->scoped_variables,
+                                       inferred_type,
+                                       error))
+            {
+                return 0;
+            }
+            
+            statement->binding_statement.inferred_type = inferred_type;
+            return 1;
         }
         case IF_STATEMENT:
+        {
+            if (!add_type_information(statement->if_statement_context.success_statement, error)) return 0;
+            if (statement->if_statement_context.else_statement != NULL
+                && !add_type_information(statement->if_statement_context.else_statement, error))
+            {
+                return 0;
+            }
+            return 1;
+        }
         case WHILE_LOOP_STATEMENT:
+            return add_type_information(statement->while_loop_statement.do_statement, error);
         case SWITCH_STATEMENT:
             return 0;
         // ignore cases
