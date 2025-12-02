@@ -165,6 +165,7 @@ int infer_literal_expression_type(struct literal_expression *e,
 }
 
 int infer_function_type(struct function_type *matched_fn,
+                        struct global_context *global_context,
                         size_t value_count,
                         struct type *out)
 {
@@ -173,6 +174,10 @@ int infer_function_type(struct function_type *matched_fn,
     }
     
     if (matched_fn->params.size == value_count) {
+        if (matched_fn->return_type->kind == TY_STRUCT) {
+            return find_struct_definition(global_context, matched_fn->return_type->name, out);
+        }
+
         *out = *matched_fn->return_type;
         return 1;
     }
@@ -243,6 +248,7 @@ int infer_expression_type(struct expression *e,
                 append_list_char_slice(error, "binary expression branches must have the same type.");
                 return 0;
             }
+            *out = left;
             return 1;
         }
         case GROUP_EXPRESSION:
@@ -254,7 +260,7 @@ int infer_expression_type(struct expression *e,
             for (size_t i = 0; i < global_context->fn_types.size; i++) {
                 struct function_type global_fn = global_context->fn_types.data[i].function_type;
                 if (list_char_eq(e->function.function_name, global_context->fn_types.data[i].name)) {
-                    return infer_function_type(&global_fn, value_count, out);
+                    return infer_function_type(&global_fn, global_context, value_count, out);
                 }
             }
 
@@ -262,7 +268,7 @@ int infer_expression_type(struct expression *e,
                 struct type *fn = get_type(&scoped_variables->data[i]);
                 if (fn->kind == TY_FUNCTION) {
                     if (list_char_eq(e->function.function_name, &scoped_variables->data[i].name)) {
-                        return infer_function_type(&fn->function_type, value_count, out);
+                        return infer_function_type(&fn->function_type, global_context, value_count, out);
                     }
                 }
             }

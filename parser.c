@@ -782,6 +782,12 @@ int parse_expression(struct token_buffer *s, struct expression *out, struct erro
         return 0;
     }
 
+    struct token tmp = {0};
+    if (get_token_type(s, &tmp, DOT)) {
+        seek_back_token(s, 1);
+        if (!parse_member_access_expression(s, l, out, error)) return 0;
+    }
+
     if (parse_binary_operator(s, &op, error) && parse_expression(s, r, error)) {
         *out = (struct expression) {
             .kind = BINARY_EXPRESSION,
@@ -795,7 +801,6 @@ int parse_expression(struct token_buffer *s, struct expression *out, struct erro
     }
 
     if (parsed_left) {
-        if (parse_member_access_expression(s, l, out, error)) return 1;
         *out = *l;
         return 1;
     }
