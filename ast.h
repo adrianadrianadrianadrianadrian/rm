@@ -90,7 +90,8 @@ enum expression_kind {
     BINARY_EXPRESSION,
     GROUP_EXPRESSION,
     FUNCTION_EXPRESSION,
-    VOID_EXPRESSION
+    VOID_EXPRESSION,
+    MEMBER_ACCESS_EXPRESSION
 };
 
 enum literal_expression_kind {
@@ -139,8 +140,7 @@ enum binary_operator {
     GREATER_THAN_BINARY,
     LESS_THAN_BINARY,
     EQUAL_TO_BINARY,
-    MULTIPLY_BINARY,
-    DOT_BINARY
+    MULTIPLY_BINARY
 };
 
 struct binary_expression {
@@ -165,6 +165,11 @@ struct function_expression {
     struct list_expression *params;
 };
 
+struct member_access_expression {
+    struct expression *accessed;
+    struct list_char *member_name;
+};
+
 typedef struct expression {
     enum expression_kind kind;
     union {
@@ -173,6 +178,7 @@ typedef struct expression {
         struct expression *grouped;
         struct binary_expression binary;
         struct function_expression function;
+        struct member_access_expression member_access;
     };
 } expression;
 

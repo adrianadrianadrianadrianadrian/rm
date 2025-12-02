@@ -649,11 +649,6 @@ int parse_binary_operator(struct token_buffer *s, enum binary_operator *out, str
         }
     }
 
-    if (get_token_type(s, &tmp, DOT)) {
-        *out = DOT_BINARY;
-        return 1;
-    }
-
     return 0;
 }
 
@@ -741,6 +736,40 @@ int parse_expression_inner(struct token_buffer *s, struct expression *out, struc
     return 0;
 }
 
+int parse_member_access_expression(struct token_buffer *b,
+                                   struct expression *l,
+                                   struct expression *out,
+                                   struct error *error)
+{
+    struct token tmp = {0};
+    int succeeded = 0;
+    while (get_token_type(b, &tmp, DOT) && get_token_type(b, &tmp, IDENTIFIER))
+    {
+        succeeded = 1;
+        struct expression *g = malloc(sizeof(*g));
+        struct expression *cpy_l = malloc(sizeof(*cpy_l));
+        *cpy_l = *l;
+        *g = (struct expression) {
+            .kind = MEMBER_ACCESS_EXPRESSION,
+            .member_access = (struct member_access_expression) {
+                .accessed = cpy_l,
+                .member_name = tmp.identifier
+            }
+        };
+
+        *l = (struct expression) {
+            .kind = GROUP_EXPRESSION,
+            .grouped = g
+        };
+    }
+    
+    if (succeeded) {
+        *out = *l;
+    }
+
+    return succeeded;
+}
+
 int parse_expression(struct token_buffer *s, struct expression *out, struct error *error) {
     enum binary_operator op;
     int parsed_left = 0;
@@ -766,6 +795,7 @@ int parse_expression(struct token_buffer *s, struct expression *out, struct erro
     }
 
     if (parsed_left) {
+        if (parse_member_access_expression(s, l, out, error)) return 1;
         *out = *l;
         return 1;
     }

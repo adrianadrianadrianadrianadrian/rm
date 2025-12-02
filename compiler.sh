@@ -1,4 +1,4 @@
-gcc -o compiler main.c lexer.c utils.c parser.c lowering/c.c error.c context.c -lm -D DEBUG_CONTEXT \
+gcc -o compiler main.c lexer.c utils.c parser.c lowering/c.c error.c context.c type_checker.c -lm -D DEBUG_CONTEXT \
     && mkdir -p target \
     && time ./compiler "$1" \
     && cd target \

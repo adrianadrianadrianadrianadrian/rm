@@ -1,11 +1,11 @@
 #include "ast.h"
 #include "context.h"
+#include "type_checker.h" // hmm I don't like this being here.
 #include "utils.h"
 #include "error.h"
 #include <assert.h>
 #include <string.h>
 
-int type_eq(struct type *l, struct type *r);
 struct list_char show_type(struct type *ty);
 
 static void add_error_inner(struct statement_metadata *metadata,
@@ -107,10 +107,11 @@ int expression_is_boolean(struct expression *e,
         case GROUP_EXPRESSION:
             return expression_is_boolean(e->grouped, global_context, scoped_variables);
         case FUNCTION_EXPRESSION:
+        case MEMBER_ACCESS_EXPRESSION:
         case VOID_EXPRESSION:
             return 0;
-    }
-    
+        }
+
     UNREACHABLE("dropped out of expression_is_boolean switch");
 }
 

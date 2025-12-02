@@ -1,5 +1,5 @@
 #include "ast.h"
-#include "lexer.h"
+#include "type_checker.h"
 #include "utils.h"
 #include <assert.h>
 #include <string.h>
@@ -93,54 +93,6 @@ int find_enum_definition(struct global_context *c,
     }
     
     UNREACHABLE("enum does not exist.");
-}
-
-int infer_field_type(struct struct_type s,
-                     struct expression *e,
-                     struct global_context *c,
-                     struct list_char *err,
-                     struct type *out)
-{
-    if (e->kind == LITERAL_EXPRESSION && e->literal.kind == LITERAL_NAME) {
-        for (size_t i = 0; i < s.pairs.size; i++) {
-            if (list_char_eq(e->literal.name, &s.pairs.data[i].field_name)) {
-                *out = *s.pairs.data[i].field_type;
-                return 1;
-            }
-        }
-        
-        append_list_char_slice(err, "no type found.");
-        return 0;
-    }
-
-    if (e->kind == BINARY_EXPRESSION) {
-        if (e->binary.l->kind != LITERAL_EXPRESSION && e->binary.l->literal.kind != LITERAL_NAME) {
-            append_list_char_slice(err, "must be a valid field name");
-            return 0;
-        }
-        
-        for (size_t i = 0; i < s.pairs.size; i++) {
-            if (list_char_eq(e->binary.l->literal.name, &s.pairs.data[i].field_name)) {
-                if (s.pairs.data[i].field_type->kind != TY_STRUCT) {
-                    append_list_char_slice(err, "cannot index into a primitive type");
-                    return 0;
-                }
-
-                struct type *field_type = s.pairs.data[i].field_type;
-                struct type complete_type = {0};
-                if (find_struct_definition(c, field_type->name, &complete_type))
-                {
-                    return infer_field_type(complete_type.struct_type, e->binary.r, c, err, out);
-                }
-                
-                append_list_char_slice(err, "unable to infer field type");
-                return 0;
-            } 
-        }
-    }
-
-    append_list_char_slice(err, "woops, I broke.");
-    return 0;
 }
 
 int infer_literal_expression_type(struct literal_expression *e,
@@ -241,6 +193,35 @@ int infer_function_type(struct function_type *matched_fn,
     return 1;
 }
 
+int get_field_type(struct list_key_type_pair *pairs,
+                   struct list_char *field_name,
+                   struct global_context *global_context,
+                   struct type *out)
+{
+    for (size_t i = 0; i < pairs->size; i++) {
+        if (list_char_eq(field_name, &pairs->data[i].field_name)) {
+            struct type *found = pairs->data[i].field_type;
+
+            if (found->kind == TY_STRUCT && found->struct_type.predefined) {
+                find_struct_definition(global_context, found->name, found);
+            } else if (found->kind == TY_ENUM && found->enum_type.predefined) {
+                find_enum_definition(global_context, found->name, found);
+            }
+            
+            *out = *found;
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
+int infer_expression_type(struct expression *e,
+                          struct global_context *global_context,
+                          struct list_scoped_variable *scoped_variables,
+                          struct type *out,
+                          struct list_char *error);
+
 int infer_expression_type(struct expression *e,
                           struct global_context *global_context,
                           struct list_scoped_variable *scoped_variables,
@@ -253,8 +234,17 @@ int infer_expression_type(struct expression *e,
         case UNARY_EXPRESSION:
             return infer_expression_type(e->unary.expression, global_context, scoped_variables, out, error);
         case BINARY_EXPRESSION:
-            // TODO(first)
-            return infer_expression_type(e->binary.l, global_context, scoped_variables, out, error);
+        {
+            struct type left = {0};
+            struct type right = {0};
+            if (!infer_expression_type(e->binary.l, global_context, scoped_variables, &left, error)) return 0;
+            if (!infer_expression_type(e->binary.r, global_context, scoped_variables, &right, error)) return 0;
+            if (!type_eq(&left, &right)) {
+                append_list_char_slice(error, "binary expression branches must have the same type.");
+                return 0;
+            }
+            return 1;
+        }
         case GROUP_EXPRESSION:
             return infer_expression_type(e->grouped, global_context, scoped_variables, out, error);
         case FUNCTION_EXPRESSION:
@@ -279,6 +269,39 @@ int infer_expression_type(struct expression *e,
 
             UNREACHABLE("function does not exist in global_context.");
         }
+        case MEMBER_ACCESS_EXPRESSION:
+        {
+            struct type accessed = {0};
+            if (!infer_expression_type(e->member_access.accessed,
+                                       global_context,
+                                       scoped_variables,
+                                       &accessed,
+                                       error))
+            {
+                return 0;
+            }
+            
+            // TODO: enums
+            if (accessed.kind != TY_STRUCT) {
+                append_list_char_slice(error, "can only access fields of structs.");
+                return 0;
+            }
+
+            if (!get_field_type(&accessed.struct_type.pairs,
+                                e->member_access.member_name,
+                                global_context,
+                                out))
+            {
+                append_list_char_slice(error, "field `");
+                append_list_char_slice(error, e->member_access.member_name->data);
+                append_list_char_slice(error, "` does not exist on `struct ");
+                append_list_char_slice(error, accessed.name->data);
+                append_list_char_slice(error, "`.");
+                return 0;
+            }
+
+            return 1;
+        }
         case VOID_EXPRESSION:
         {
             *out = (struct type) {
@@ -288,7 +311,7 @@ int infer_expression_type(struct expression *e,
             return 1;
         }
     }
-    
+
     UNREACHABLE("infer_expression_type: fell out of switch case.");
 }
 
@@ -789,66 +812,7 @@ int check_binary_expression_soundness(struct binary_expression *e,
                                       struct list_scoped_variable *scoped_variables,
                                       struct list_char *error)
 {
-    switch (e->binary_op) {
-        case DOT_BINARY:
-        {
-            if (!expression_is_literal_name(e->l)) {
-                append_list_char_slice(error, "the left expression must be a struct or enum.");
-                return 0;
-            }
-
-            struct list_char *data_name = e->l->literal.name;
-            struct scoped_variable *ref = NULL;
-            for (size_t i = 0; i < scoped_variables->size; i++) {
-                if (list_char_eq(data_name, &scoped_variables->data[i].name)) {
-                    ref = &scoped_variables->data[i];
-                    break;
-                }
-            }
-
-            if (!ref) {
-                append_list_char_slice(error, "`");
-                append_list_char_slice(error, data_name->data);
-                append_list_char_slice(error, "` does not exist.");
-                return 0;
-            }
-            
-            if (ref->inferred_type->kind != TY_STRUCT && ref->inferred_type->kind != TY_ENUM) {
-                append_list_char_slice(error, "cannot index into `");
-                append_list_char_slice(error, data_name->data);
-                append_list_char_slice(error, "`.");
-                return 0;
-            }
-            
-            if (!expression_is_literal_name(e->r)) {
-                append_list_char_slice(error, "invalid expression.");
-                return 0;
-            }
-
-            struct list_char *field_name = e->r->literal.name;
-            int found = 0;
-            struct list_key_type_pair *pairs = &ref->inferred_type->struct_type.pairs;
-            for (size_t i = 0; i < pairs->size; i++) {
-                if (list_char_eq(field_name, &pairs->data[i].field_name)) {
-                    found = 1;
-                    break;
-                }
-            }
-            
-            if (!found) {
-                append_list_char_slice(error, "`");
-                append_list_char_slice(error, field_name->data);
-                append_list_char_slice(error, "` does not exist on `.");
-                append_list_char_slice(error, ref->name.data);
-                append_list_char_slice(error, "`.");
-                return 0;
-            }
-
-            return 1;
-        }
-        default:
-            return 1;
-    }
+    return 1;
 }
 
 int check_expression_soundness(struct expression *e,

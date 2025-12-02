@@ -226,7 +226,8 @@ void write_type(struct type *ty, FILE *file) {
             write_enum_type(ty, 0, file);
             break;
         default:
-            UNREACHABLE("type kind not handled");
+            break;
+            //UNREACHABLE("type kind not handled");
     }
 }
 
@@ -387,15 +388,15 @@ void write_binary_expression(struct binary_expression *e,
         case MULTIPLY_BINARY:
             fprintf(file, " * ");
             break;
-        case DOT_BINARY:
-        {
-            if (expression_is_pointer(e->l, global_context, scoped_variables)) {
-                fprintf(file, "->");
-            } else {
-                fprintf(file, ".");
-            }
-            break;
-        }
+        // case DOT_BINARY:
+        // {
+        //     if (expression_is_pointer(e->l, global_context, scoped_variables)) {
+        //         fprintf(file, "->");
+        //     } else {
+        //         fprintf(file, ".");
+        //     }
+        //     break;
+        // }
         default:
             UNREACHABLE("binary operator not handled");
     }
@@ -410,6 +411,15 @@ void write_grouped_expression(struct expression *e,
     fprintf(file, "(");
     write_expression(e, global_context, scoped_variables, file);
     fprintf(file, ")");
+}
+
+void write_member_access_expression(struct member_access_expression *e,
+                                    struct global_context *global_context,
+                                    struct list_scoped_variable *scoped_variables,
+                                    FILE *file)
+{
+    write_expression(e->accessed, global_context, scoped_variables, file);
+    fprintf(file, ".%s", e->member_name->data);
 }
 
 void write_function_expression(struct function_expression *e,
@@ -448,6 +458,9 @@ void write_expression(struct expression *e,
             return;
         case FUNCTION_EXPRESSION:
             write_function_expression(&e->function, gc, scoped_variables, file);
+            return;
+        case MEMBER_ACCESS_EXPRESSION:
+            write_member_access_expression(&e->member_access, gc, scoped_variables, file);
             return;
         case VOID_EXPRESSION:
             return;

@@ -4,7 +4,7 @@
 #include "lexer.h"
 #include "error.h"
 #include "context.h"
-#include "type_check.c"
+#include "type_checker.h"
 #include "lowering/c.h"
 
 int main(int argc, char **argv) {
@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
         write_error(stderr, &error);
         return 1;
     }
-    
+
     if (!type_check(program.statements, &error)) {
         write_error(stderr, &error);
         return 1;
