@@ -156,19 +156,26 @@ int parse_array_type_modifier(struct token_buffer *tb,
                               struct error *error)
 {
     struct token tmp = {0};
-    int size = 0;
-    int sized = 0;
+    int literal_size = 0;
+    int literally_sized = 0;
+    int reference_sized = 0;
+    struct list_char *reference_name = NULL;
     if (!get_token_type(tb, &tmp, OPEN_SQUARE_PAREN))  return 0;
     if (get_token_type(tb, &tmp, NUMERIC)) {
-        sized = 1;
-        size = (int)tmp.numeric; // TODO: numeric token needs improving
+        literally_sized = 1;
+        literal_size = (int)tmp.numeric; // TODO: numeric token needs improving
+    } else if (get_token_type(tb, &tmp, IDENTIFIER)) {
+        reference_sized = 1;
+        reference_name = tmp.identifier;
     }
     if (!get_token_type(tb, &tmp, CLOSE_SQUARE_PAREN)) return 0;
     *out = (struct type_modifier) {
         .kind = ARRAY_MODIFIER_KIND,
         .array_modifier = (struct array_type_modifier) {
-            .size = size,
-            .sized = sized
+            .literal_size = literal_size,
+            .literally_sized = literally_sized,
+            .reference_sized = reference_sized,
+            .reference_name = reference_name
         }
     };
 

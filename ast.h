@@ -28,8 +28,10 @@ enum type_modifier_kind {
 };
 
 struct array_type_modifier {
-    int sized;
-    int size;
+    int literally_sized;
+    int literal_size;
+    int reference_sized;
+    struct list_char *reference_name;
 };
 
 typedef struct type_modifier {

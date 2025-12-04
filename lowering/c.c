@@ -84,8 +84,8 @@ struct list_char apply_type_modifier(struct type_modifier modifier, struct list_
             list_append(&output, '(');
             copy_list_char(&output, &input);
             list_append(&output, '[');
-            if (modifier.array_modifier.sized) {
-                append_int(modifier.array_modifier.size, &output);
+            if (modifier.array_modifier.literally_sized) {
+                append_int(modifier.array_modifier.literal_size, &output);
             }
             list_append(&output, ']');
             list_append(&output, ')');

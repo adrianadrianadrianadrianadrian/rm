@@ -161,8 +161,8 @@ int infer_literal_expression_type(struct literal_expression *e,
             struct type_modifier array = (struct type_modifier) {
                 .kind = ARRAY_MODIFIER_KIND,
                 .array_modifier = (struct array_type_modifier) {
-                    .sized = 1,
-                    .size = e->str->size
+                    .literally_sized = 1,
+                    .literal_size = e->str->size
                 }
             };
             list_append(&modifiers, array);

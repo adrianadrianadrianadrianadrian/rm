@@ -52,8 +52,9 @@ int type_modifier_eq(struct type_modifier *l, struct type_modifier *r)
     switch (l->kind) {
         case ARRAY_MODIFIER_KIND:
         {
-            if (l->array_modifier.sized && r->array_modifier.sized
-                && l->array_modifier.size == r->array_modifier.size)
+            // TODO: reference based size
+            if (l->array_modifier.literally_sized && r->array_modifier.literally_sized
+                && l->array_modifier.literal_size == r->array_modifier.literal_size)
             {
                 return 1;
             }
