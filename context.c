@@ -155,9 +155,27 @@ int infer_literal_expression_type(struct literal_expression *e,
             };
             return 1;
         }
+        case LITERAL_STR:
+        {
+            struct list_type_modifier modifiers = list_create(type_modifier, 1);
+            struct type_modifier array = (struct type_modifier) {
+                .kind = ARRAY_MODIFIER_KIND,
+                .array_modifier = (struct array_type_modifier) {
+                    .sized = 1,
+                    .size = e->str->size
+                }
+            };
+            list_append(&modifiers, array);
+            
+            *out = (struct type) {
+                .kind = TY_PRIMITIVE,
+                .primitive_type = U8,
+                .modifiers = modifiers
+            };
+            return 1;
+        }
         case LITERAL_HOLE:
         case LITERAL_NULL:
-        case LITERAL_STR:
             return 1;
     }
 
@@ -220,12 +238,6 @@ int get_field_type(struct list_key_type_pair *pairs,
     
     return 0;
 }
-
-int infer_expression_type(struct expression *e,
-                          struct global_context *global_context,
-                          struct list_scoped_variable *scoped_variables,
-                          struct type *out,
-                          struct list_char *error);
 
 int infer_expression_type(struct expression *e,
                           struct global_context *global_context,
@@ -1105,6 +1117,10 @@ void print_type(struct type *ty) {
     if (ty == NULL) {
         printf("none");
         return;
+    }
+    
+    if (ty->modifiers.size) {
+        printf("mods: %d ", (int)ty->modifiers.size);
     }
 
     switch (ty->kind) {

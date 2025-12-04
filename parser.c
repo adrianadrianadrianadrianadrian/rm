@@ -233,7 +233,8 @@ int parse_key_type_pairs(struct token_buffer *s,
 }
 
 int parse_function_type(struct token_buffer *s,
-                        struct type *out, int named,
+                        struct type *out,
+                        int named,
                         struct error *error)
 {
     struct token tmp;
@@ -782,12 +783,7 @@ int parse_expression(struct token_buffer *s, struct expression *out, struct erro
         return 0;
     }
 
-    struct token tmp = {0};
-    if (get_token_type(s, &tmp, DOT)) {
-        seek_back_token(s, 1);
-        if (!parse_member_access_expression(s, l, out, error)) return 0;
-    }
-
+    if (peek_token_type(s, DOT) && !parse_member_access_expression(s, l, out, error)) return 0;
     if (parse_binary_operator(s, &op, error) && parse_expression(s, r, error)) {
         *out = (struct expression) {
             .kind = BINARY_EXPRESSION,

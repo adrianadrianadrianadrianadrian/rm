@@ -43,6 +43,31 @@ int fn_type_eq(struct function_type *l, struct function_type *r) {
     return 1;
 }
 
+int type_modifier_eq(struct type_modifier *l, struct type_modifier *r)
+{
+    if (l->kind != r->kind) {
+        return 0;
+    }
+    
+    switch (l->kind) {
+        case ARRAY_MODIFIER_KIND:
+        {
+            if (l->array_modifier.sized && r->array_modifier.sized
+                && l->array_modifier.size == r->array_modifier.size)
+            {
+                return 1;
+            }
+            return 0;
+        }
+        case POINTER_MODIFIER_KIND:
+        case NULLABLE_MODIFIER_KIND:
+        case MUTABLE_MODIFIER_KIND:
+            return 1;
+    }
+    
+    UNREACHABLE("type_modifier_eq fell out of switch.");
+}
+
 int type_eq(struct type *l, struct type *r) {
     assert(l);
     assert(r);
@@ -51,6 +76,14 @@ int type_eq(struct type *l, struct type *r) {
 
     if (l->kind != r->kind) {
         return 0;
+    }
+    
+    if (l->modifiers.size != r->modifiers.size) {
+        return 0;
+    }
+    
+    for (size_t i = 0; i < l->modifiers.size; i++) {
+        if (!type_modifier_eq(&l->modifiers.data[i], &r->modifiers.data[i])) return 0;
     }
     
     switch (l->kind) {

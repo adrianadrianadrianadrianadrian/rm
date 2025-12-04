@@ -509,3 +509,14 @@ int get_token_type(struct token_buffer *s,
 
     return 1;
 }
+
+int peek_token_type(struct token_buffer *s, enum token_type ty)
+{
+    struct token tmp = {0};
+    int output = 0;
+    if (get_token_type(s, &tmp, DOT)) {
+        seek_back_token(s, 1);
+        output = 1;
+    }
+    return output;
+}
