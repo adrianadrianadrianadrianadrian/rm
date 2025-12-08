@@ -289,10 +289,51 @@ int type_check(struct list_statement_context statements, struct error *error) {
     return 1;
 }
 
+struct list_char show_modifier(struct type_modifier *m)
+{
+    struct list_char output = list_create(char, 10);
+    switch (m->kind) {
+        case POINTER_MODIFIER_KIND:
+        {
+            append_list_char_slice(&output, "*");
+            break; 
+        }
+        case NULLABLE_MODIFIER_KIND:
+        {
+            append_list_char_slice(&output, "?");
+            break; 
+        }
+        case MUTABLE_MODIFIER_KIND:
+        {
+            append_list_char_slice(&output, "mut ");
+            break; 
+        }
+        case ARRAY_MODIFIER_KIND:
+        {
+            append_list_char_slice(&output, "[");
+            if (m->array_modifier.literally_sized) {
+                char tmp[1024] = {0}; // TODO don't do this...
+                sprintf(tmp, "%d", m->array_modifier.literal_size);
+                append_list_char_slice(&output, tmp);
+            } else if (m->array_modifier.reference_sized) {
+                append_list_char_slice(&output, m->array_modifier.reference_name->data);
+            }
+            append_list_char_slice(&output, "]");
+            break; 
+        }
+    }
+
+    return output;
+}
+
 struct list_char show_type(struct type *ty) {
     struct list_char output = list_create(char, 10);
     if (ty == NULL) {
         return output;
+    }
+
+    for (size_t i = 0; i < ty->modifiers.size; i++) {
+        append_list_char_slice(&output, show_modifier(&ty->modifiers.data[i]).data);
     }
 
     switch (ty->kind) {

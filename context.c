@@ -897,6 +897,41 @@ int check_struct_soundness(struct type *type,
 
         list_append(&visited, field_name);
     }
+    
+    for (size_t i = 0; i < pairs.size; i++) {
+        struct type *ty = pairs.data[i].field_type;
+        for (size_t m = 0; m < ty->modifiers.size; m++) {
+            struct type_modifier *modifier = &ty->modifiers.data[m];
+            if (modifier->kind == ARRAY_MODIFIER_KIND
+                && modifier->array_modifier.reference_sized)
+            {
+                struct list_char *ref_name = modifier->array_modifier.reference_name;
+                int found = 0;
+                for (size_t p = 0; p < pairs.size; p++) {
+                    if (list_char_eq(&pairs.data[p].field_name, modifier->array_modifier.reference_name)) {
+                        struct type *found_type = pairs.data[p].field_type;
+                        if (found_type->kind == TY_PRIMITIVE && found_type->primitive_type == USIZE) {
+                            found = 1;
+                        } else {
+                            append_list_char_slice(error, "`");
+                            append_list_char_slice(error, ref_name->data);
+                            append_list_char_slice(error, "` must be bound to a field of type `usize`");
+                            return 0;
+                        }
+                    }
+                }
+                
+                if (!found) {
+                    append_list_char_slice(error, "`");
+                    append_list_char_slice(error, ref_name->data);
+                    append_list_char_slice(error, "` is unbounded within `");
+                    append_list_char_slice(error, type->name->data);
+                    append_list_char_slice(error, "`");
+                    return 0;
+                }
+            }
+        }
+    }
 
     return 1;
 }
