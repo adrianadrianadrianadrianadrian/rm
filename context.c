@@ -110,7 +110,12 @@ int infer_literal_expression_type(struct literal_expression *e,
         {
             for (size_t i = 0; i < scoped_variables->size; i++) {
                 if (list_char_eq(e->name, &scoped_variables->data[i].name)) {
-                    *out = *get_type(&scoped_variables->data[i]);
+                    struct type *t = get_type(&scoped_variables->data[i]);
+                    // TODO: enums
+                    if (t->kind == TY_STRUCT) {
+                        find_struct_definition(global_context, t->name, t);
+                    }
+                    *out = *t;
                     return 1;
                 }
             }
