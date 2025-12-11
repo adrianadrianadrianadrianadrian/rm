@@ -345,6 +345,8 @@ int expression_is_pointer(struct expression *e,
         case BINARY_EXPRESSION:
         case GROUP_EXPRESSION:
         case FUNCTION_EXPRESSION:
+        case VOID_EXPRESSION:
+        case MEMBER_ACCESS_EXPRESSION:
             break;
     }
 
@@ -482,7 +484,7 @@ void write_binding_statement(struct statement_context *c, FILE *file) {
     if (s->binding_statement->has_type) {
         write_type(&s->binding_statement->variable_type, file);
     } else {
-        write_type(s->inferred_type, file);
+        write_type(&s->inferred_type, file);
     }
 
     fprintf(file, " %s = ", s->binding_statement->variable_name.data);
@@ -500,7 +502,7 @@ void write_if_statement(struct statement_context *c, FILE *file) {
     assert(c->kind == IF_STATEMENT);
     struct if_statement_context *s = &c->if_statement_context;
     fprintf(file, "if (");
-    write_expression(&s->condition, c->global_context, &c->scoped_variables, file);
+    write_expression(s->condition.e, c->global_context, &c->scoped_variables, file);
     fprintf(file, ")");
     write_statement(s->success_statement, file);
     if (s->else_statement != NULL) {
@@ -513,7 +515,7 @@ void write_return_statement(struct statement_context *c, FILE *file) {
     assert(c->kind == RETURN_STATEMENT);
     struct return_statement_context *s = &c->return_statement;
     fprintf(file, "return ");
-    write_expression(s->e, c->global_context, &c->scoped_variables, file);
+    write_expression(s->e.e, c->global_context, &c->scoped_variables, file);
     fprintf(file, ";");
 }
 
@@ -530,7 +532,7 @@ void write_block_statement(struct list_statement_context *statements, FILE *file
 void write_action_statement(struct statement_context *c, FILE *file) {
     assert(c->kind == ACTION_STATEMENT);
     struct action_statement_context *s = &c->action_statement_context;
-    write_expression(s->e, c->global_context, &c->scoped_variables, file);
+    write_expression(s->e.e, c->global_context, &c->scoped_variables, file);
     fprintf(file, ";");
 }
 
@@ -538,7 +540,7 @@ void write_while_statement(struct statement_context *c, FILE *file) {
     assert(c->kind == WHILE_LOOP_STATEMENT);
     struct while_loop_statement_context *s = &c->while_loop_statement;
     fprintf(file, "while (");
-    write_expression(&s->condition, c->global_context, &c->scoped_variables, file);
+    write_expression(s->condition.e, c->global_context, &c->scoped_variables, file);
     fprintf(file, ")");
     write_statement(s->do_statement, file);
 }

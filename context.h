@@ -18,19 +18,22 @@ typedef struct scoped_variable {
 
 struct_list(scoped_variable);
 
+struct expression_context {
+    struct expression *e;
+    struct type type;
+};
+
 struct binding_statement_context {
-    struct type *inferred_type;
+    struct type inferred_type;
     struct binding_statement *binding_statement;
 };
 
 struct return_statement_context {
-    struct expression *e;
-    struct type *inferred_return_type;
+    struct expression_context e;
 };
 
 struct action_statement_context {
-    struct expression *e;
-    struct type *inferred_expression_type;
+    struct expression_context e;
 };
 
 struct type_declaration_statement_context {
@@ -39,12 +42,12 @@ struct type_declaration_statement_context {
 };
 
 struct while_loop_statement_context {
-    struct expression condition;
+    struct expression_context condition;
     struct statement_context *do_statement;
 };
 
 struct if_statement_context {
-    struct expression condition;
+    struct expression_context condition;
     struct statement_context *success_statement;
     struct statement_context *else_statement;
 };

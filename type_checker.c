@@ -1,12 +1,15 @@
 #include "ast.h"
 #include "context.h"
-#include "type_checker.h" // hmm I don't like this being here.
+#include "type_checker.h"
+#include "type_inference.h"
 #include "utils.h"
 #include "error.h"
 #include <assert.h>
 #include <string.h>
 
 struct list_char show_type(struct type *ty);
+int type_check_single(struct statement_context *s, struct error *error);
+int type_eq(struct type *l, struct type *r);
 
 static void add_error_inner(struct statement_metadata *metadata,
                             char *error_message,
@@ -15,7 +18,7 @@ static void add_error_inner(struct statement_metadata *metadata,
     add_error(metadata->row, metadata->col, metadata->file_name, out, error_message);
 }
 
-struct list_char type_mismatch_error(struct type *expected, struct type *actual)
+struct list_char type_mismatch_generic_error(struct type *expected, struct type *actual)
 {
     struct list_char output = list_create(char, 50);
     append_list_char_slice(&output, "mismatch types; expected `");
@@ -101,60 +104,25 @@ int type_eq(struct type *l, struct type *r) {
     return 0;
 }
 
-int expression_is_boolean(struct expression *e,
-                          struct global_context *global_context,
-                          struct list_scoped_variable *scoped_variables)
+int is_boolean(struct type *ty)
 {
-    switch (e->kind) {
-        case UNARY_EXPRESSION:
+    switch (ty->kind) {
+        case TY_PRIMITIVE:
         {
-            switch (e->unary.unary_operator) {
-                case BANG_UNARY:
-                    return expression_is_boolean(e->unary.expression, global_context, scoped_variables);
-                default:
-                    return 0;
-            }
+            return ty->primitive_type == BOOL;
         }
-        case LITERAL_EXPRESSION:
-        {
-            switch (e->literal.kind) {
-                case LITERAL_BOOLEAN:
-                    return 1;
-                default:
-                    return 0;
-            }
-        }
-        case BINARY_EXPRESSION:
-        {
-            switch (e->binary.binary_op) {
-                case OR_BINARY:
-                case AND_BINARY:
-                case EQUAL_TO_BINARY:
-                {
-                    return expression_is_boolean(e->binary.l, global_context, scoped_variables)
-                        || expression_is_boolean(e->binary.r, global_context, scoped_variables);
-                }
-                default:
-                    return 0;
-            }
-        }
-        case GROUP_EXPRESSION:
-            return expression_is_boolean(e->grouped, global_context, scoped_variables);
-        case FUNCTION_EXPRESSION:
-        case MEMBER_ACCESS_EXPRESSION:
-        case VOID_EXPRESSION:
+        default:
             return 0;
-        }
-
-    UNREACHABLE("dropped out of expression_is_boolean switch");
+    }
 }
 
 int binding_statement_check(struct statement_context *sc, struct error *error)
 {
     assert(sc->kind == BINDING_STATEMENT);
     struct binding_statement_context *s = &sc->binding_statement;
+    assert(s->binding_statement->has_type && s->inferred_type.kind != 0);
 
-    if (!s->binding_statement->has_type && s->inferred_type == NULL) {
+    if (!s->binding_statement->has_type && s->inferred_type.kind == 0) {
         struct list_char message = list_create(char, 100);
         append_list_char_slice(&message, "type annotations needed for `");
         append_list_char_slice(&message, s->binding_statement->variable_name.data);
@@ -163,18 +131,11 @@ int binding_statement_check(struct statement_context *sc, struct error *error)
         return 0;
     }
     
-    if (s->binding_statement->has_type && s->inferred_type == NULL)
-    {
-        // TODO: I think inferred should always be non null. Returning true always for now.
-        //add_error_inner(sc->metadata, "unable to infer type.", error);
-        return 1;
-    }
-    
     if (s->binding_statement->has_type
-        && !type_eq(s->inferred_type, &s->binding_statement->variable_type))
+        && !type_eq(&s->inferred_type, &s->binding_statement->variable_type))
     {
         add_error_inner(sc->metadata,
-                        type_mismatch_error(&s->binding_statement->variable_type, s->inferred_type).data,
+                        type_mismatch_generic_error(&s->binding_statement->variable_type, &s->inferred_type).data,
                         error);
         return 0;
     }
@@ -184,10 +145,7 @@ int binding_statement_check(struct statement_context *sc, struct error *error)
 
 void all_return_statements_inner(struct statement_context *s_ctx, struct list_statement_context *out)
 {
-    if (s_ctx == NULL) {
-        return;
-    }
-
+    assert(s_ctx != NULL);
     switch (s_ctx->kind) {
         case RETURN_STATEMENT:
         {
@@ -197,7 +155,9 @@ void all_return_statements_inner(struct statement_context *s_ctx, struct list_st
         case IF_STATEMENT:
         {
             all_return_statements_inner(s_ctx->if_statement_context.success_statement, out);
-            all_return_statements_inner(s_ctx->if_statement_context.else_statement, out);
+            if (s_ctx->if_statement_context.else_statement != NULL)  {
+                all_return_statements_inner(s_ctx->if_statement_context.else_statement, out);
+            }
             return;
         }
         case BLOCK_STATEMENT:
@@ -236,6 +196,67 @@ struct list_statement_context all_return_statements(struct statement_context *s_
     return output;
 }
 
+int find_function_definition(struct list_char *function_name,
+                             struct global_context *global_context,
+                             struct type *out)
+{
+    for (size_t i = 0; i < global_context->fn_types.size; i++) {
+        if (list_char_eq(function_name, global_context->fn_types.data[i].name)) {
+            *out = global_context->fn_types.data[i];
+            return 1;
+        }
+    }
+    
+    UNREACHABLE("all functions should exist in the global context by this point.");
+}
+
+int type_check_action_statement(struct statement_context *s, struct error *error)
+{
+    assert(s->kind == ACTION_STATEMENT);
+    if (s->action_statement_context.e.e->kind != FUNCTION_EXPRESSION) {
+        return 1;
+    }
+
+    struct function_expression *fn_expr = &s->action_statement_context.e.e->function;
+    struct type fn = {0};
+    if (!find_function_definition(fn_expr->function_name, s->global_context, &fn)) return 0;
+
+    // assumption: fn's list of name:type is ordered how it's defined in the source code,
+    // and the params list of expressions is ordered how it's written in the source code.
+    assert(fn_expr->params->size <= fn.function_type.params.size);
+    for (size_t i = 0; i < fn_expr->params->size; i++) {
+        struct type param_type = {0};
+        struct list_char error_message = list_create(char, 100);
+        // TODO: do this as part of contextualisation
+        if (!infer_expression_type(&fn_expr->params->data[i],
+                                   s->global_context,
+                                   &s->scoped_variables,
+                                   &param_type,
+                                   &error_message))
+        {
+            add_error_inner(s->metadata, error_message.data, error);
+            return 0;
+        }
+
+        struct type *expected = fn.function_type.params.data[i].field_type;
+        struct type *actual = &param_type;
+        if (!type_eq(actual, expected)) {
+            append_list_char_slice(&error_message, "mismatch types; expected `");
+            append_list_char_slice(&error_message, show_type(expected).data);
+            append_list_char_slice(&error_message, "` for parameter '");
+            append_list_char_slice(&error_message, fn.function_type.params.data[i].field_name.data);
+            append_list_char_slice(&error_message, "' but got `");
+            append_list_char_slice(&error_message, show_type(actual).data);
+            append_list_char_slice(&error_message, "` (in function '");
+            append_list_char_slice(&error_message, fn.name->data);
+            append_list_char_slice(&error_message, "').");
+            add_error_inner(s->metadata, error_message.data, error);
+            return 0;
+        }
+    }
+    return 0;
+}
+
 int type_check_single(struct statement_context *s, struct error *error)
 {
     switch (s->kind) {
@@ -252,11 +273,11 @@ int type_check_single(struct statement_context *s, struct error *error)
                 if (return_statements.size) {
                     for (size_t j = 0; j < return_statements.size; j++) {
                         struct statement_context *this = &return_statements.data[j];
-                        struct type *actual = this->return_statement.inferred_return_type;
+                        struct type *actual = &this->return_statement.e.type;
 
                         if (!type_eq(expected_return_type, actual)) {
                             add_error_inner(this->metadata,
-                                            type_mismatch_error(expected_return_type, actual).data,
+                                            type_mismatch_generic_error(expected_return_type, actual).data,
                                             error);
                             return 0;
                         }
@@ -268,12 +289,46 @@ int type_check_single(struct statement_context *s, struct error *error)
             return 1;
         }
         case IF_STATEMENT:
-        case SWITCH_STATEMENT:
-        case BLOCK_STATEMENT:
+        {
+            struct if_statement_context *ctx = &s->if_statement_context;
+            if (!is_boolean(&ctx->condition.type))
+            {
+                add_error_inner(s->metadata, "the condition of an if statement must be a boolean.", error);
+                return 0;
+            }
+            
+            if (!type_check_single(ctx->success_statement, error)) return 0;
+            if (ctx->else_statement != NULL
+                && !type_check_single(ctx->else_statement, error)) return 0;
+            
+            return 1;
+        }
         case WHILE_LOOP_STATEMENT:
+        {
+            struct while_loop_statement_context *ctx = &s->while_loop_statement;
+            if (!is_boolean(&ctx->condition.type))
+            {
+                add_error_inner(s->metadata, "the condition of a while loop must be a boolean.", error);
+                return 0;
+            }
+            
+            if (!type_check_single(ctx->do_statement, error)) return 0;
+            return 1;
+        }
+        case BLOCK_STATEMENT:
+        {
+            for (size_t i = 0; i < s->block_statements->size; i++) {
+                if (!type_check_single(&s->block_statements->data[i], error)) return 0;
+            }
+            return 1;
+        }
         case ACTION_STATEMENT:
+            return type_check_action_statement(s, error);
+        case SWITCH_STATEMENT:
+        {
+            TODO("switch statement type check");
+        }
         case RETURN_STATEMENT:
-        // cases to ignore
         case INCLUDE_STATEMENT:
         case BREAK_STATEMENT:
             return 1;
@@ -284,7 +339,7 @@ int type_check_single(struct statement_context *s, struct error *error)
 
 int type_check(struct list_statement_context statements, struct error *error) {
     for (size_t i = 0; i < statements.size; i++) {
-        if (!type_check_single(&statements.data[i], error))    return 0;
+        if (!type_check_single(&statements.data[i], error)) return 0;
     }
     return 1;
 }
