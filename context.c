@@ -20,14 +20,6 @@ static void add_error_inner(struct statement_metadata *metadata,
     add_error(metadata->row, metadata->col, metadata->file_name, out, error_message);
 }
 
-int include_statement_global_context(struct statement *s,
-                                     struct global_context *gc,
-                                     struct error *error)
-{
-    // TODO
-    return 1;
-}
-
 int type_declaration_global_context(struct statement *s,
                                     struct global_context *gc,
                                     struct error *error)
@@ -63,9 +55,6 @@ int generate_global_context(struct list_statement *s,
         switch (current->kind) {
             case TYPE_DECLARATION_STATEMENT:
                 if (!type_declaration_global_context(current, out, error)) return 0;
-                break;
-            case INCLUDE_STATEMENT:
-                if (!include_statement_global_context(current, out, error)) return 0;
                 break;
             default:
                 break;
@@ -395,20 +384,20 @@ int contextualise_statement(struct statement *s,
             };
             return 1;
         }
-        case INCLUDE_STATEMENT:
+        case SWITCH_STATEMENT:
+            TODO("switch statement, context");
+            break;
+        case C_BLOCK_STATEMENT:
         {
             *out = (struct statement_context) {
                 .kind = s->kind,
+                .c_block_statement = s->c_block_statement,
                 .global_context = global_context,
-                .scoped_variables = NULL,
-                .include_statement = s->include_statement,
+                .scoped_variables = copy_scoped_variables(scoped_variables),
                 .metadata = &s->metadata
             };
             return 1;
         }
-        case SWITCH_STATEMENT:
-            TODO("switch statement, context");
-            break;
         default:
             UNREACHABLE("statement kind not handled");
     }
@@ -569,12 +558,6 @@ int check_expression_soundness(struct expression *e,
 
     return 1;
 }
-
-typedef struct string {
-    struct list_char name;
-} string;
-
-struct_list(string);
 
 int check_struct_soundness(struct type *type,
                            struct global_context *global_context,
@@ -784,6 +767,31 @@ int check_while_statement_soundness(struct statement_context *ctx, struct error 
     return 1;
 }
 
+int check_c_block_soundness(struct statement_context *ctx, struct error *error)
+{
+    assert(ctx->kind == C_BLOCK_STATEMENT);
+    int io_found = 0;
+
+    for (size_t i = 0; i < ctx->scoped_variables.size; i++) {
+        struct scoped_variable *scoped = &ctx->scoped_variables.data[i];
+        if (scoped->defined_type->kind == TY_PRIMITIVE
+            && scoped->defined_type->primitive_type == IO)
+        {
+            io_found = 1;
+            break;
+        }
+    }
+    
+    if (!io_found) {
+        add_error_inner(ctx->metadata,
+                        "C code is only allowed within a function that has IO as a parameter",
+                        error);
+        return 0;
+    }
+    
+    return 1;
+}
+
 int check_statement_soundness(struct statement_context *ctx,
                               struct error *error)
 {
@@ -803,10 +811,11 @@ int check_statement_soundness(struct statement_context *ctx,
         case BREAK_STATEMENT:
         case SWITCH_STATEMENT:
             return 0;
+        case C_BLOCK_STATEMENT:
+            return check_c_block_soundness(ctx, error);
         case TYPE_DECLARATION_STATEMENT:
-        case INCLUDE_STATEMENT:
             UNREACHABLE("top level statements shouldn't be here.");
-    }
+        }
 
     UNREACHABLE("dropped out of switch in check_statement_soundness.");
 }
@@ -852,9 +861,8 @@ int check_contextual_soundness(struct rm_program *program, struct error *error)
                     case TY_PRIMITIVE:
                         UNREACHABLE("TY_PRIMITIVE shouldn't have made it here via parsing.");
                 }
-            }
-            case INCLUDE_STATEMENT:
                 break;
+            }
             default:
                 UNREACHABLE("statement shouldn't have made it here via parsing.");
         }
@@ -916,6 +924,9 @@ void print_type(struct type *ty) {
                     return;
                 case F64:
                     printf("f64");
+                    return;
+                case IO:
+                    printf("IO");
                     return;
             }
         }
@@ -1072,11 +1083,6 @@ void show_statement_context(struct statement_context *s)
                 printf("\n");
                 show_statement_context(s->if_statement_context.else_statement);
             }
-            break;
-        }
-        case INCLUDE_STATEMENT:
-        {
-            printf("include,%s", s->include_statement.include.data);
             break;
         }
         default:

@@ -14,6 +14,7 @@ enum token_type {
     PIPE,
     CHAR_LITERAL,
     STR_LITERAL,
+    C_LITERAL,
     STAR,
     AND,
     NUMERIC,

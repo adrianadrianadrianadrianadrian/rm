@@ -17,7 +17,8 @@ enum primitive_type {
     U64,
     USIZE,
     F32,
-    F64
+    F64,
+    IO
 };
 
 enum type_modifier_kind {
@@ -195,8 +196,8 @@ enum statement_kind {
     WHILE_LOOP_STATEMENT,
     TYPE_DECLARATION_STATEMENT,
     BREAK_STATEMENT,
-    INCLUDE_STATEMENT,
-	SWITCH_STATEMENT
+	SWITCH_STATEMENT,
+    C_BLOCK_STATEMENT
 };
 
 enum switch_pattern_kind {
@@ -272,11 +273,6 @@ struct while_loop_statement {
     struct statement *do_statement;
 };
 
-struct include_statement {
-    struct list_char include;
-    int external;
-};
-
 typedef struct case_statement {
 	struct switch_pattern pattern;
     struct statement *statement;
@@ -295,6 +291,10 @@ struct statement_metadata {
     char *file_name;
 };
 
+struct c_block_statement {
+    struct list_char *raw_c;
+};
+
 typedef struct statement {
     enum statement_kind kind;
     union {
@@ -304,8 +304,8 @@ typedef struct statement {
         struct list_statement *statements;
         struct while_loop_statement while_loop_statement;
         struct type_declaration_statement type_declaration;
-        struct include_statement include_statement;
         struct switch_statement switch_statement;
+        struct c_block_statement c_block_statement;
     };
     struct statement_metadata metadata;
 } statement;

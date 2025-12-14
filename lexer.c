@@ -180,6 +180,10 @@ int is_double_quote(char c) {
     return c == '"';
 }
 
+int is_backtick(char c) {
+    return c == '`';
+}
+
 int is_special_char(char c) {
     switch (c) {
         case ':':
@@ -373,7 +377,32 @@ int next_token(struct file_buffer *b, struct token *out) {
                     .metadata = (struct token_metadata) {
                         .row = start_row,
                         .col = start_col,
-                        .length = length
+                        .length = length,
+                        .file_name = test.file_name
+                    }
+                };
+                return 1;
+            }
+            case '`': {
+                int start_row = test.row;
+                int start_col = test.col;
+                int str_start_position = b->current_position;
+
+                struct list_char *str = malloc(sizeof(*str));
+                *str = list_create(char, 50);
+                read_until(b, str, is_backtick, 1);
+
+                int length = b->current_position - str_start_position;
+                assert(length >= 0);
+                
+                *out = (struct token) {
+                    .token_type = C_LITERAL,
+                    .identifier = str,
+                    .metadata = (struct token_metadata) {
+                        .row = start_row,
+                        .col = start_col,
+                        .length = length,
+                        .file_name = test.file_name
                     }
                 };
                 return 1;

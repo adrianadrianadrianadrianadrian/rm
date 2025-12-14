@@ -115,6 +115,11 @@ int is_primitive(struct list_char *raw, enum primitive_type *out)
         return 1;
     }
 
+    if (strcmp(raw->data, "IO") == 0) {
+        *out = IO;
+        return 1;
+    }
+
     return 0;
 }
 
@@ -966,41 +971,6 @@ int parse_switch_pattern(struct token_buffer *tb, struct switch_pattern *out, st
 
 int parse_statement(struct token_buffer *s, struct statement *out, struct error *error);
 
-int parse_include_statement(struct token_buffer *s, struct statement *out, struct error *error)
-{
-    int external = 0;
-    struct token tmp = {0};
-    struct list_char raw_include = list_create(char, 10);
-
-    if (!get_token_type(s, &tmp, HASH))            return 0;
-    if (!get_token_type(s, &tmp, IDENTIFIER))      return 0;
-    if (get_token_type(s, &tmp, LEFT_ARROW)
-        && get_token_type(s, &tmp, IDENTIFIER))
-    {
-        external = 1;
-        copy_list_char(&raw_include, tmp.identifier);
-        if (!get_token_type(s, &tmp, DOT))         return 0;
-        if (!get_token_type(s, &tmp, IDENTIFIER))  return 0;
-        list_append(&raw_include, '.');
-        copy_list_char(&raw_include, tmp.identifier);
-        if (!get_token_type(s, &tmp, RIGHT_ARROW)) return 0;
-    } else if (get_token_type(s, &tmp, STR_LITERAL)) {
-        raw_include = *tmp.identifier;
-    } else {
-        return 0;
-    }
-    
-    *out = (struct statement) {
-        .kind = INCLUDE_STATEMENT,
-        .include_statement = (struct include_statement) {
-            .include = raw_include,
-            .external = external
-        }
-    };
-
-    return 1;
-}
-
 int parse_break_statement(struct token_buffer *s, struct statement *out, struct error *error)
 {
     struct statement_metadata metadata = statement_metadata(s);
@@ -1352,6 +1322,25 @@ int parse_switch_statement(struct token_buffer *tb, struct statement *out, struc
     return 1;
 }
 
+int parse_c_block_statement(struct token_buffer *b,
+                            struct statement *out,
+                            struct error *error)
+{
+    struct statement_metadata metadata = statement_metadata(b);
+    struct token tmp = {0};
+    if (!get_token_type(b, &tmp, C_LITERAL)) return 0;
+
+    *out = (struct statement) {
+        .kind = C_BLOCK_STATEMENT,
+        .c_block_statement = (struct c_block_statement) {
+            .raw_c = tmp.identifier
+        },
+        .metadata = metadata
+    };
+
+    return 1;
+}
+
 int parse_statement(struct token_buffer *s,
                     struct statement *out,
                     struct error *error)
@@ -1363,15 +1352,15 @@ int parse_statement(struct token_buffer *s,
         || try_parse(s, out, error, (parser_t)parse_if_statement)
         || try_parse(s, out, error, (parser_t)parse_block_statement)
         || try_parse(s, out, error, (parser_t)parse_while_loop_statement)
-        || try_parse(s, out, error, (parser_t)parse_switch_statement);
+        || try_parse(s, out, error, (parser_t)parse_switch_statement)
+        || try_parse(s, out, error, (parser_t)parse_c_block_statement);
 }
 
 int parse_top_level_statement(struct token_buffer *s,
                               struct statement *out,
                               struct error *error)
 {
-    return try_parse(s, out, error, (parser_t)parse_type_declaration)
-        || try_parse(s, out, error, (parser_t)parse_include_statement);
+    return try_parse(s, out, error, (parser_t)parse_type_declaration);
 }
 
 int parse_rm_file(struct token_buffer *s,

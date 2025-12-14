@@ -2,6 +2,9 @@
 #include "../context.h"
 #include <assert.h>
 #include "c.h"
+#include <regex.h>
+#include "../utils.h"
+#include "../type_inference.h"
 
 void write_type(struct type *ty, FILE *file);
 
@@ -47,6 +50,8 @@ void write_primitive_type(struct type *ty, FILE *file) {
         case BOOL:
             fprintf(file, "char");
             return;
+        case IO:
+            UNREACHABLE("IO should never be written");
         default:
             UNREACHABLE("primitive type not handled");
     }
@@ -201,6 +206,9 @@ void write_function_type(struct type *ty, FILE *file) {
     size_t param_count = ty->function_type.params.size;
     for (size_t i = 0; i < param_count; i++) {
         struct key_type_pair pair = ty->function_type.params.data[i];
+        if (pair.field_type->kind == TY_PRIMITIVE && pair.field_type->primitive_type == IO) {
+            continue;
+        }
         write_type(pair.field_type, file);
         struct list_char modified = apply_type_modifiers(pair.field_type->modifiers, pair.field_name);
         fprintf(file, " %s", modified.data);
@@ -432,6 +440,18 @@ void write_function_expression(struct function_expression *e,
     fprintf(file, "%s(", e->function_name->data);
     size_t param_count = e->params->size;
     for (size_t i = 0; i < param_count; i++) {
+        struct type param_type = {0};
+        
+        // TODO: later we'll attach the type to the expression earlier on.
+        assert(infer_expression_type(&e->params->data[i],
+                                     global_context,
+                                     scoped_variables,
+                                     &param_type,
+                                     NULL));
+        if (param_type.kind == TY_PRIMITIVE && param_type.primitive_type == IO) {
+            continue;
+        }
+
         write_expression(&e->params->data[i], global_context, scoped_variables, file);
         if (i < param_count - 1) {
             fprintf(file, ", ");
@@ -559,21 +579,21 @@ void write_break_statement(FILE *file) {
     fprintf(file, "break;");
 }
 
-void write_include_statement(struct include_statement *s, FILE *file) {
-    fprintf(file, "#include");
-    if (s->external) {
-        fprintf(file, " <");
-    } else {
-        fprintf(file, " \"");
-    }
-    fprintf(file, "%s", s->include.data);
-    if (s->external) {
-        fprintf(file, ">");
-    } else {
-        fprintf(file, "\"");
-    }
-    fprintf(file, "\n");
-}
+// void write_include_statement(struct include_statement *s, FILE *file) {
+//     fprintf(file, "#include");
+//     if (s->external) {
+//         fprintf(file, " <");
+//     } else {
+//         fprintf(file, " \"");
+//     }
+//     fprintf(file, "%s", s->include.data);
+//     if (s->external) {
+//         fprintf(file, ">");
+//     } else {
+//         fprintf(file, "\"");
+//     }
+//     fprintf(file, "\n");
+// }
 
 void write_case_predicate(struct switch_pattern *p,
                           const char *switch_name,
@@ -636,6 +656,10 @@ void write_switch_statement(struct switch_statement *s, FILE *file) {
     // }
 }
 
+void write_c_block(struct c_block_statement *s, FILE *file) {
+    fprintf(file, "%s\n", s->raw_c->data);
+}
+
 void write_statement(struct statement_context *s, FILE *file) {
     switch (s->kind) {
         case BINDING_STATEMENT:
@@ -662,11 +686,11 @@ void write_statement(struct statement_context *s, FILE *file) {
         case BREAK_STATEMENT:
             write_break_statement(file);
             break;
-        case INCLUDE_STATEMENT:
-            write_include_statement(&s->include_statement, file);
-            break;
         case SWITCH_STATEMENT:
             //write_switch_statement(&s->switch_statement, file);
+            break;
+        case C_BLOCK_STATEMENT:
+            write_c_block(&s->c_block_statement, file);
             break;
         default:
             UNREACHABLE("statement type not handled");
@@ -686,9 +710,6 @@ static void generate_c_file(struct rm_program *file) {
         struct statement_context s = file->statements.data[i];
 
 		switch (s.kind) {
-			case INCLUDE_STATEMENT:
-        		write_statement(&s, output_file);
-				break;
 			case TYPE_DECLARATION_STATEMENT:
 			{
 				switch (s.type_declaration.type.kind) {
@@ -714,6 +735,7 @@ static void generate_c_file(struct rm_program *file) {
 			case WHILE_LOOP_STATEMENT:
             case SWITCH_STATEMENT:
 			case BREAK_STATEMENT:
+			case C_BLOCK_STATEMENT:
 			{
 				fprintf(stderr, "woops");
 				exit(-1);
@@ -722,9 +744,12 @@ static void generate_c_file(struct rm_program *file) {
     }
 }
 
-void generate_c_header(struct global_context *global_context) {
+void generate_c_header(struct rm_program *program) {
+    struct global_context *global_context = &program->global_context;
     FILE *header = fopen("target/c_output.h", "w");
     fprintf(header, "#ifndef C_OUTPUT_H\n#define C_OUTPUT_H\n");
+    fprintf(header, "#include <stdio.h>\n");
+    fprintf(header, "#include <stdlib.h>\n");
 
     for (size_t i = 0; i < global_context->data_types.size; i++) {
         struct type data_type = global_context->data_types.data[i];
@@ -746,6 +771,6 @@ void generate_c_header(struct global_context *global_context) {
 }
 
 void generate_c(struct rm_program *program) {
-    generate_c_header(&program->global_context);
+    generate_c_header(program);
     generate_c_file(program);
 }

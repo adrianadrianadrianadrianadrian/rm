@@ -61,8 +61,8 @@ typedef struct statement_context {
         struct list_statement_context *block_statements;
         struct while_loop_statement_context while_loop_statement;
         struct if_statement_context if_statement_context;
-        struct include_statement include_statement;
         struct action_statement_context action_statement_context;
+        struct c_block_statement c_block_statement;
     };
     struct global_context *global_context;
     struct list_scoped_variable scoped_variables;

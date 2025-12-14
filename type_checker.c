@@ -57,11 +57,11 @@ int type_modifier_eq(struct type_modifier *l, struct type_modifier *r)
         {
             // TODO: reference based size
             if (l->array_modifier.literally_sized && r->array_modifier.literally_sized
-                && l->array_modifier.literal_size == r->array_modifier.literal_size)
+                && l->array_modifier.literal_size != r->array_modifier.literal_size)
             {
-                return 1;
+                return 0;
             }
-            return 0;
+            return 1;
         }
         case POINTER_MODIFIER_KIND:
         case NULLABLE_MODIFIER_KIND:
@@ -182,10 +182,10 @@ void all_return_statements_inner(struct statement_context *s_ctx, struct list_st
         case ACTION_STATEMENT:
         case TYPE_DECLARATION_STATEMENT:
         case BREAK_STATEMENT:
-        case INCLUDE_STATEMENT:
+        case C_BLOCK_STATEMENT:
             return;
     }
-    
+
     UNREACHABLE("`all_return_statements_inner` fell out of it's switch.");
 }
 
@@ -254,7 +254,7 @@ int type_check_action_statement(struct statement_context *s, struct error *error
             return 0;
         }
     }
-    return 0;
+    return 1;
 }
 
 int type_check_single(struct statement_context *s, struct error *error)
@@ -329,8 +329,8 @@ int type_check_single(struct statement_context *s, struct error *error)
             TODO("switch statement type check");
         }
         case RETURN_STATEMENT:
-        case INCLUDE_STATEMENT:
         case BREAK_STATEMENT:
+        case C_BLOCK_STATEMENT:
             return 1;
     }
 
