@@ -115,11 +115,6 @@ int is_primitive(struct list_char *raw, enum primitive_type *out)
         return 1;
     }
 
-    if (strcmp(raw->data, "IO") == 0) {
-        *out = IO;
-        return 1;
-    }
-
     return 0;
 }
 
@@ -657,8 +652,8 @@ int parse_binary_operator(struct token_buffer *s, enum binary_operator *out, str
             *out = EQUAL_TO_BINARY;
             return 1;
         } else {
-            seek_back_token(s, 1);
-            return 0;
+            *out = ASSIGN_BINARY;
+            return 1;
         }
     }
 

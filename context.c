@@ -767,31 +767,6 @@ int check_while_statement_soundness(struct statement_context *ctx, struct error 
     return 1;
 }
 
-int check_c_block_soundness(struct statement_context *ctx, struct error *error)
-{
-    assert(ctx->kind == C_BLOCK_STATEMENT);
-    int io_found = 0;
-
-    for (size_t i = 0; i < ctx->scoped_variables.size; i++) {
-        struct scoped_variable *scoped = &ctx->scoped_variables.data[i];
-        if (scoped->defined_type->kind == TY_PRIMITIVE
-            && scoped->defined_type->primitive_type == IO)
-        {
-            io_found = 1;
-            break;
-        }
-    }
-    
-    if (!io_found) {
-        add_error_inner(ctx->metadata,
-                        "C code is only allowed within a function that has IO as a parameter",
-                        error);
-        return 0;
-    }
-    
-    return 1;
-}
-
 int check_statement_soundness(struct statement_context *ctx,
                               struct error *error)
 {
@@ -812,7 +787,7 @@ int check_statement_soundness(struct statement_context *ctx,
         case SWITCH_STATEMENT:
             return 0;
         case C_BLOCK_STATEMENT:
-            return check_c_block_soundness(ctx, error);
+            return 1;
         case TYPE_DECLARATION_STATEMENT:
             UNREACHABLE("top level statements shouldn't be here.");
         }
@@ -924,9 +899,6 @@ void print_type(struct type *ty) {
                     return;
                 case F64:
                     printf("f64");
-                    return;
-                case IO:
-                    printf("IO");
                     return;
             }
         }

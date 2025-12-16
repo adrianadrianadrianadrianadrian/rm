@@ -50,8 +50,6 @@ void write_primitive_type(struct type *ty, FILE *file) {
         case BOOL:
             fprintf(file, "char");
             return;
-        case IO:
-            UNREACHABLE("IO should never be written");
         default:
             UNREACHABLE("primitive type not handled");
     }
@@ -206,9 +204,6 @@ void write_function_type(struct type *ty, FILE *file) {
     size_t param_count = ty->function_type.params.size;
     for (size_t i = 0; i < param_count; i++) {
         struct key_type_pair pair = ty->function_type.params.data[i];
-        if (pair.field_type->kind == TY_PRIMITIVE && pair.field_type->primitive_type == IO) {
-            continue;
-        }
         write_type(pair.field_type, file);
         struct list_char modified = apply_type_modifiers(pair.field_type->modifiers, pair.field_name);
         fprintf(file, " %s", modified.data);
@@ -398,6 +393,9 @@ void write_binary_expression(struct binary_expression *e,
         case MULTIPLY_BINARY:
             fprintf(file, " * ");
             break;
+        case ASSIGN_BINARY:
+            fprintf(file, " = ");
+            break;
         // case DOT_BINARY:
         // {
         //     if (expression_is_pointer(e->l, global_context, scoped_variables)) {
@@ -448,10 +446,6 @@ void write_function_expression(struct function_expression *e,
                                      scoped_variables,
                                      &param_type,
                                      NULL));
-        if (param_type.kind == TY_PRIMITIVE && param_type.primitive_type == IO) {
-            continue;
-        }
-
         write_expression(&e->params->data[i], global_context, scoped_variables, file);
         if (i < param_count - 1) {
             fprintf(file, ", ");
@@ -750,6 +744,7 @@ void generate_c_header(struct rm_program *program) {
     fprintf(header, "#ifndef C_OUTPUT_H\n#define C_OUTPUT_H\n");
     fprintf(header, "#include <stdio.h>\n");
     fprintf(header, "#include <stdlib.h>\n");
+    fprintf(header, "#include <unistd.h>\n");
 
     for (size_t i = 0; i < global_context->data_types.size; i++) {
         struct type data_type = global_context->data_types.data[i];

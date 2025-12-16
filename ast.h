@@ -17,8 +17,7 @@ enum primitive_type {
     U64,
     USIZE,
     F32,
-    F64,
-    IO
+    F64
 };
 
 enum type_modifier_kind {
@@ -143,7 +142,8 @@ enum binary_operator {
     GREATER_THAN_BINARY,
     LESS_THAN_BINARY,
     EQUAL_TO_BINARY,
-    MULTIPLY_BINARY
+    MULTIPLY_BINARY,
+    ASSIGN_BINARY
 };
 
 struct binary_expression {
