@@ -54,6 +54,6 @@ struct rm_program {
     struct list_statement_context statements;
 };
 
-struct rm_program contextualise(struct list_statement *s);
+void contextualise(struct list_statement *s, struct rm_program *out);
 
 #endif

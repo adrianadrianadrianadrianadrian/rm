@@ -12,7 +12,8 @@ int compile(char *file_name, struct error *error) {
     FILE *f = fopen(file_name, "r");
     struct token_buffer tb = create_token_buffer(f, file_name);
     if (!parse_rm_file(&tb, &statements, error)) return 0;
-    struct rm_program program = contextualise(&statements);
+    struct rm_program program = {0};
+    contextualise(&statements, &program);
     if (!soundness_check(&program, error)) return 0;
 
     // if (!type_check(program.statements, &error)) {

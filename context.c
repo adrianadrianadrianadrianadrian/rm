@@ -5,6 +5,11 @@
 #include "utils.h"
 #include "context.h"
 
+#ifdef DEBUG_CONTEXT
+void show_statement_context(struct statement_context *s);
+void show_global_context(struct global_context *gc);
+#endif
+
 void type_declaration_global_context(struct statement *s,
                                      struct global_context *gc)
 {
@@ -27,7 +32,7 @@ void type_declaration_global_context(struct statement *s,
 }
 
 void generate_global_context(struct list_statement *s,
-                            struct global_context *out)
+                             struct global_context *out)
 {
     if (s->size == 0) {
         return;
@@ -75,9 +80,9 @@ void add_scoped_variable(struct statement_context *c,
 }
 
 void contextualise_statement(struct statement *s,
-                            struct global_context *global_context,
-                            struct list_scoped_variable *scoped_variables,
-                            struct statement_context *out)
+                             struct global_context *global_context,
+                             struct list_scoped_variable *scoped_variables,
+                             struct statement_context *out)
 {
     switch (s->kind) {
         case BINDING_STATEMENT:
@@ -89,7 +94,7 @@ void contextualise_statement(struct statement *s,
                 .scoped_variables = copy_scoped_variables(scoped_variables),
                 .metadata = &s->metadata
             };
-            break;
+            return;
         }
         case RETURN_STATEMENT:
         {
@@ -100,7 +105,7 @@ void contextualise_statement(struct statement *s,
                 .scoped_variables = copy_scoped_variables(scoped_variables),
                 .metadata = &s->metadata
             };
-            break;
+            return;
         }
         case TYPE_DECLARATION_STATEMENT:
         {
@@ -140,7 +145,7 @@ void contextualise_statement(struct statement *s,
                         .scoped_variables = copy_scoped_variables(&fn_scoped_variables),
                         .metadata = &s->metadata
                     };
-                    break;
+                    return;
                 }
                 case TY_PRIMITIVE:
                 case TY_STRUCT:
@@ -156,12 +161,12 @@ void contextualise_statement(struct statement *s,
                         .scoped_variables = NULL,
                         .metadata = &s->metadata
                     };
-                    break;
+                    return;
                 }
                 default:
                     UNREACHABLE("type_declaration type not handled");
             }
-            break;
+            return;
         }
         case BLOCK_STATEMENT:
         {
@@ -187,7 +192,7 @@ void contextualise_statement(struct statement *s,
                 .scoped_variables = copy_scoped_variables(scoped_variables),
                 .metadata = &s->metadata
             };
-            break;
+            return;
         }
         case IF_STATEMENT:
         {
@@ -220,7 +225,7 @@ void contextualise_statement(struct statement *s,
                 .scoped_variables = copy_scoped_variables(scoped_variables),
                 .metadata = &s->metadata
             };
-            break;
+            return;
         }
         case ACTION_STATEMENT:
         {
@@ -231,7 +236,7 @@ void contextualise_statement(struct statement *s,
                 .expression = &s->expression,
                 .metadata = &s->metadata
             };
-            break;
+            return;
         }
         case WHILE_LOOP_STATEMENT:
         {
@@ -252,7 +257,7 @@ void contextualise_statement(struct statement *s,
                 .global_context = global_context,
                 .metadata = &s->metadata
             };
-            break;
+            return;
         }
         case BREAK_STATEMENT:
         {
@@ -262,11 +267,11 @@ void contextualise_statement(struct statement *s,
                 .global_context = global_context,
                 .metadata = &s->metadata
             };
-            break;
+            return;
         }
         case SWITCH_STATEMENT:
             TODO("switch statement, context");
-            break;
+            return;
         case C_BLOCK_STATEMENT:
         {
             *out = (struct statement_context) {
@@ -276,38 +281,165 @@ void contextualise_statement(struct statement *s,
                 .scoped_variables = copy_scoped_variables(scoped_variables),
                 .metadata = &s->metadata
             };
-            break;
+            return;
         }
         default:
             UNREACHABLE("statement kind not handled");
     }
 }
 
-struct rm_program contextualise(struct list_statement *s)
+void contextualise(struct list_statement *s, struct rm_program *out)
 {
-    struct rm_program output = (struct rm_program) {
-        .global_context = (struct global_context) {
-            .fn_types = list_create(type, 100),
-            .data_types = list_create(type, 100)
-        },
-        .statements = list_create(statement_context, s->size)
-    };
-
     if (s->size == 0) {
-        return output;
+        return;
     }
 
-    generate_global_context(s, &output.global_context);
+    *out = (struct rm_program) {
+            .global_context = (struct global_context) {
+                .fn_types = list_create(type, 100),
+                .data_types = list_create(type, 100)
+            },
+            .statements = list_create(statement_context, s->size)
+        };
+
+    generate_global_context(s, &out->global_context);
     struct list_scoped_variable scoped_variables = list_create(scoped_variable, 10);
 
     for (size_t i = 0; i < s->size; i++) {
         struct statement_context c = {0};
         contextualise_statement(&s->data[i],
-                                &output.global_context,
+                                &out->global_context,
                                 &scoped_variables,
                                 &c);
-        list_append(&output.statements, c);
+        list_append(&out->statements, c);
+
+#ifdef DEBUG_CONTEXT
+        show_statement_context(&c);
+        printf("\n");
+#endif
+
     }
-    
-    return output;
 }
+
+#ifdef DEBUG_CONTEXT
+void show_global_context(struct global_context *gc) {
+    printf("global context:\n");
+    printf("functions [");
+    for (size_t i = 0; i < gc->fn_types.size; i++) {
+        printf("%s", gc->fn_types.data[i].name->data);
+        if (i < gc->fn_types.size - 1) {
+           printf(", "); 
+        }
+    }
+    printf("]\n");
+    printf("datatypes [");
+    for (size_t i = 0; i < gc->data_types.size; i++) {
+        printf("%s", gc->data_types.data[i].name->data);
+        if (i < gc->data_types.size - 1) {
+           printf(", "); 
+        }
+    }
+    printf("]\n");
+}
+
+void show_scoped_variables(struct list_scoped_variable *vars)
+{
+    if (vars->size <= 0) {
+        return;
+    }
+
+    printf(" | scoped variables: ");
+    for (size_t i = 0; i < vars->size; i++) {
+        struct scoped_variable scoped = vars->data[i];
+        printf("%s,", scoped.name.data);
+    }
+}
+
+void show_statement_context(struct statement_context *s)
+{
+    static int global_shown;
+    if (!global_shown) {
+        show_global_context(s->global_context);
+        global_shown = 1;
+    }
+
+    switch (s->kind) {
+        case BINDING_STATEMENT:
+        {
+            printf("binding_statement:%s", s->binding_statement->variable_name.data);
+            show_scoped_variables(&s->scoped_variables);
+            break;
+        }
+        case TYPE_DECLARATION_STATEMENT:
+        {
+            switch (s->type_declaration.type.kind) {
+                case TY_FUNCTION:
+                {
+                    printf("function,%s,", s->type_declaration.type.name->data);
+                    for (size_t i = 0; i < s->type_declaration.statements->size; i++) {
+                        printf("\n");
+                        show_statement_context(&s->type_declaration.statements->data[i]);
+                    }
+                }
+                default:
+                    break;
+            }
+
+            break;
+        }
+        case RETURN_STATEMENT:
+        {
+            printf("return_statement");
+            show_scoped_variables(&s->scoped_variables);
+            break;
+        }
+        case WHILE_LOOP_STATEMENT:
+        {
+            printf("while_statement");
+            show_scoped_variables(&s->scoped_variables);
+            printf("\n");
+            show_statement_context(s->while_loop_statement.do_statement);
+            break;
+        }
+        case BLOCK_STATEMENT:
+        {
+            printf("block_statement");
+            for (size_t i = 0; i < s->block_statements->size; i++) {
+                printf("\n");
+                show_statement_context(&s->block_statements->data[i]);
+            }
+            break;
+        }
+        case BREAK_STATEMENT:
+        {
+            printf("break_statement");
+            show_scoped_variables(&s->scoped_variables);
+            break;
+        }
+        case ACTION_STATEMENT:
+        {
+            printf("action_statement");
+            show_scoped_variables(&s->scoped_variables);
+            break;
+        }
+        case IF_STATEMENT:
+        {
+            printf("if_statement");
+            show_scoped_variables(&s->scoped_variables);
+            printf("\n");
+            printf("success_condition");
+            printf("\n");
+            show_statement_context(s->if_statement_context.success_statement);
+            if (s->if_statement_context.else_statement != NULL) {
+                printf("\n");
+                printf("else_condition");
+                printf("\n");
+                show_statement_context(s->if_statement_context.else_statement);
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+#endif
