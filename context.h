@@ -3,7 +3,6 @@
 
 #include "utils.h"
 #include "ast.h"
-#include "error.h"
 
 struct global_context {
     struct list_type fn_types;
@@ -12,29 +11,9 @@ struct global_context {
 
 typedef struct scoped_variable {
     struct list_char name;
-    struct type *defined_type;
-    struct type *inferred_type;
 } scoped_variable;
 
 struct_list(scoped_variable);
-
-struct expression_context {
-    struct expression *e;
-    struct type type;
-};
-
-struct binding_statement_context {
-    struct type inferred_type;
-    struct binding_statement *binding_statement;
-};
-
-struct return_statement_context {
-    struct expression_context e;
-};
-
-struct action_statement_context {
-    struct expression_context e;
-};
 
 struct type_declaration_statement_context {
     struct type type;
@@ -42,12 +21,12 @@ struct type_declaration_statement_context {
 };
 
 struct while_loop_statement_context {
-    struct expression_context condition;
+    struct expression *condition;
     struct statement_context *do_statement;
 };
 
 struct if_statement_context {
-    struct expression_context condition;
+    struct expression *condition;
     struct statement_context *success_statement;
     struct statement_context *else_statement;
 };
@@ -55,13 +34,12 @@ struct if_statement_context {
 typedef struct statement_context {
     enum statement_kind kind;
     union {
-        struct binding_statement_context binding_statement;
-        struct return_statement_context return_statement;
+        struct expression *expression;
+        struct binding_statement *binding_statement;
         struct type_declaration_statement_context type_declaration;
         struct list_statement_context *block_statements;
         struct while_loop_statement_context while_loop_statement;
         struct if_statement_context if_statement_context;
-        struct action_statement_context action_statement_context;
         struct c_block_statement c_block_statement;
     };
     struct global_context *global_context;
@@ -76,12 +54,6 @@ struct rm_program {
     struct list_statement_context statements;
 };
 
-int contextualise(struct list_statement *s,
-                  struct rm_program *out,
-                  struct error *error);
+struct rm_program contextualise(struct list_statement *s);
 
-int get_scoped_variable_type(struct list_scoped_variable *scoped_variables,
-                             struct global_context *c,
-					         struct list_char ident_name,
-							 struct type *out);
 #endif

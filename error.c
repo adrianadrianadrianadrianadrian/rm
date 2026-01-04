@@ -52,3 +52,11 @@ void write_error(FILE *f, struct error *err)
 {
     write_error_inner(f, err, 0);
 }
+
+void write_raw_error(FILE *f, char *raw)
+{
+    fprintf(f, "%sERROR:%s %s\n",
+        RED,
+        NO_COLOUR,
+        raw);
+}

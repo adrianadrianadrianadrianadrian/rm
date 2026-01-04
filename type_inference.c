@@ -45,9 +45,10 @@ int find_enum_definition(struct global_context *c,
 }
 
 struct type *get_type(struct scoped_variable *variable) {
-    struct type *output = variable->defined_type != NULL
-        ? variable->defined_type
-        : variable->inferred_type;
+    struct type *output = NULL; 
+    // variable->defined_type != NULL
+    //     ? variable->defined_type
+    //     : variable->inferred_type;
     assert(output);
     return output;
 }

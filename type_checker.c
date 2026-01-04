@@ -118,27 +118,27 @@ int is_boolean(struct type *ty)
 
 int binding_statement_check(struct statement_context *sc, struct error *error)
 {
-    assert(sc->kind == BINDING_STATEMENT);
-    struct binding_statement_context *s = &sc->binding_statement;
-    assert(s->binding_statement->has_type && s->inferred_type.kind != 0);
-
-    if (!s->binding_statement->has_type && s->inferred_type.kind == 0) {
-        struct list_char message = list_create(char, 100);
-        append_list_char_slice(&message, "type annotations needed for `");
-        append_list_char_slice(&message, s->binding_statement->variable_name.data);
-        append_list_char_slice(&message, "`.");
-        add_error_inner(sc->metadata, message.data, error);
-        return 0;
-    }
-    
-    if (s->binding_statement->has_type
-        && !type_eq(&s->inferred_type, &s->binding_statement->variable_type))
-    {
-        add_error_inner(sc->metadata,
-                        type_mismatch_generic_error(&s->binding_statement->variable_type, &s->inferred_type).data,
-                        error);
-        return 0;
-    }
+    // assert(sc->kind == BINDING_STATEMENT);
+    // struct binding_statement_context *s = &sc->binding_statement;
+    // assert(s->binding_statement->has_type && s->inferred_type.kind != 0);
+    //
+    // if (!s->binding_statement->has_type && s->inferred_type.kind == 0) {
+    //     struct list_char message = list_create(char, 100);
+    //     append_list_char_slice(&message, "type annotations needed for `");
+    //     append_list_char_slice(&message, s->binding_statement->variable_name.data);
+    //     append_list_char_slice(&message, "`.");
+    //     add_error_inner(sc->metadata, message.data, error);
+    //     return 0;
+    // }
+    // 
+    // if (s->binding_statement->has_type
+    //     && !type_eq(&s->inferred_type, &s->binding_statement->variable_type))
+    // {
+    //     add_error_inner(sc->metadata,
+    //                     type_mismatch_generic_error(&s->binding_statement->variable_type, &s->inferred_type).data,
+    //                     error);
+    //     return 0;
+    // }
 
     return 1;
 }
@@ -213,11 +213,11 @@ int find_function_definition(struct list_char *function_name,
 int type_check_action_statement(struct statement_context *s, struct error *error)
 {
     assert(s->kind == ACTION_STATEMENT);
-    if (s->action_statement_context.e.e->kind != FUNCTION_EXPRESSION) {
+    if (s->expression->kind != FUNCTION_EXPRESSION) {
         return 1;
     }
 
-    struct function_expression *fn_expr = &s->action_statement_context.e.e->function;
+    struct function_expression *fn_expr = &s->expression->function;
     struct type fn = {0};
     if (!find_function_definition(fn_expr->function_name, s->global_context, &fn)) return 0;
 
@@ -259,82 +259,83 @@ int type_check_action_statement(struct statement_context *s, struct error *error
 
 int type_check_single(struct statement_context *s, struct error *error)
 {
-    switch (s->kind) {
-        case BINDING_STATEMENT:
-            return binding_statement_check(s, error);
-        case TYPE_DECLARATION_STATEMENT:
-        {
-            if (s->type_declaration.type.kind != TY_FUNCTION) return 1;
-            struct type *expected_return_type = s->type_declaration.type.function_type.return_type;
-            struct list_statement_context *body = s->type_declaration.statements;
-
-            for (size_t i = 0; i < body->size; i++) {
-                struct list_statement_context return_statements = all_return_statements(&body->data[i]);
-                if (return_statements.size) {
-                    for (size_t j = 0; j < return_statements.size; j++) {
-                        struct statement_context *this = &return_statements.data[j];
-                        struct type *actual = &this->return_statement.e.type;
-
-                        if (!type_eq(expected_return_type, actual)) {
-                            add_error_inner(this->metadata,
-                                            type_mismatch_generic_error(expected_return_type, actual).data,
-                                            error);
-                            return 0;
-                        }
-                    }
-                } else {
-                    if (!type_check_single(&s->type_declaration.statements->data[i], error)) return 0;
-                }
-            }
-            return 1;
-        }
-        case IF_STATEMENT:
-        {
-            struct if_statement_context *ctx = &s->if_statement_context;
-            if (!is_boolean(&ctx->condition.type))
-            {
-                add_error_inner(s->metadata, "the condition of an if statement must be a boolean.", error);
-                return 0;
-            }
-            
-            if (!type_check_single(ctx->success_statement, error)) return 0;
-            if (ctx->else_statement != NULL
-                && !type_check_single(ctx->else_statement, error)) return 0;
-            
-            return 1;
-        }
-        case WHILE_LOOP_STATEMENT:
-        {
-            struct while_loop_statement_context *ctx = &s->while_loop_statement;
-            if (!is_boolean(&ctx->condition.type))
-            {
-                add_error_inner(s->metadata, "the condition of a while loop must be a boolean.", error);
-                return 0;
-            }
-            
-            if (!type_check_single(ctx->do_statement, error)) return 0;
-            return 1;
-        }
-        case BLOCK_STATEMENT:
-        {
-            for (size_t i = 0; i < s->block_statements->size; i++) {
-                if (!type_check_single(&s->block_statements->data[i], error)) return 0;
-            }
-            return 1;
-        }
-        case ACTION_STATEMENT:
-            return type_check_action_statement(s, error);
-        case SWITCH_STATEMENT:
-        {
-            TODO("switch statement type check");
-        }
-        case RETURN_STATEMENT:
-        case BREAK_STATEMENT:
-        case C_BLOCK_STATEMENT:
-            return 1;
-    }
-
-    UNREACHABLE("type_check_single dropped out of a switch on all kinds of statements.");
+    // switch (s->kind) {
+    //     case BINDING_STATEMENT:
+    //         return binding_statement_check(s, error);
+    //     case TYPE_DECLARATION_STATEMENT:
+    //     {
+    //         if (s->type_declaration.type.kind != TY_FUNCTION) return 1;
+    //         struct type *expected_return_type = s->type_declaration.type.function_type.return_type;
+    //         struct list_statement_context *body = s->type_declaration.statements;
+    //
+    //         for (size_t i = 0; i < body->size; i++) {
+    //             struct list_statement_context return_statements = all_return_statements(&body->data[i]);
+    //             if (return_statements.size) {
+    //                 for (size_t j = 0; j < return_statements.size; j++) {
+    //                     struct statement_context *this = &return_statements.data[j];
+    //                     // TODO
+    //                     struct type *actual = NULL; //&this->return_statement.e.type;
+    //
+    //                     if (!type_eq(expected_return_type, actual)) {
+    //                         add_error_inner(this->metadata,
+    //                                         type_mismatch_generic_error(expected_return_type, actual).data,
+    //                                         error);
+    //                         return 0;
+    //                     }
+    //                 }
+    //             } else {
+    //                 if (!type_check_single(&s->type_declaration.statements->data[i], error)) return 0;
+    //             }
+    //         }
+    //         return 1;
+    //     }
+    //     case IF_STATEMENT:
+    //     {
+    //         struct if_statement_context *ctx = &s->if_statement_context;
+    //         if (!is_boolean(&ctx->condition.type))
+    //         {
+    //             add_error_inner(s->metadata, "the condition of an if statement must be a boolean.", error);
+    //             return 0;
+    //         }
+    //         
+    //         if (!type_check_single(ctx->success_statement, error)) return 0;
+    //         if (ctx->else_statement != NULL
+    //             && !type_check_single(ctx->else_statement, error)) return 0;
+    //         
+    //         return 1;
+    //     }
+    //     case WHILE_LOOP_STATEMENT:
+    //     {
+    //         struct while_loop_statement_context *ctx = &s->while_loop_statement;
+    //         if (!is_boolean(&ctx->condition.type))
+    //         {
+    //             add_error_inner(s->metadata, "the condition of a while loop must be a boolean.", error);
+    //             return 0;
+    //         }
+    //         
+    //         if (!type_check_single(ctx->do_statement, error)) return 0;
+    //         return 1;
+    //     }
+    //     case BLOCK_STATEMENT:
+    //     {
+    //         for (size_t i = 0; i < s->block_statements->size; i++) {
+    //             if (!type_check_single(&s->block_statements->data[i], error)) return 0;
+    //         }
+    //         return 1;
+    //     }
+    //     case ACTION_STATEMENT:
+    //         return type_check_action_statement(s, error);
+    //     case SWITCH_STATEMENT:
+    //     {
+    //         TODO("switch statement type check");
+    //     }
+    //     case RETURN_STATEMENT:
+    //     case BREAK_STATEMENT:
+    //     case C_BLOCK_STATEMENT:
+    //         return 1;
+    // }
+    //
+    // UNREACHABLE("type_check_single dropped out of a switch on all kinds of statements.");
 }
 
 int type_check(struct list_statement_context statements, struct error *error) {

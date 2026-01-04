@@ -21,5 +21,6 @@ void add_error(unsigned int row,
                char *message);
 
 void write_error(FILE *f, struct error *error);
+void write_raw_error(FILE *f, char *error);
 
 #endif

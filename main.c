@@ -4,31 +4,38 @@
 #include "lexer.h"
 #include "error.h"
 #include "context.h"
-#include "type_checker.h"
+#include "soundness.h"
 #include "lowering/c.h"
 
-int main(int argc, char **argv) {
-    FILE *f = fopen(argv[1], "r");
-    struct token_buffer tok_buf = create_token_buffer(f, argv[1]);
-    struct error error = {0};
+int compile(char *file_name, struct error *error) {
     struct list_statement statements = {0};
+    FILE *f = fopen(file_name, "r");
+    struct token_buffer tb = create_token_buffer(f, file_name);
+    if (!parse_rm_file(&tb, &statements, error)) return 0;
+    struct rm_program program = contextualise(&statements);
+    if (!soundness_check(&program, error)) return 0;
 
-    if (!parse_rm_file(&tok_buf, &statements, &error)) {
+    // if (!type_check(program.statements, &error)) {
+    //     write_error(stderr, &error);
+    //     return 1;
+    // }
+
+    return 1;
+}
+
+int main(int argc, char **argv) {
+    struct error error = {0};
+
+    if (argc <= 1 || !strcmp(argv[1], "")) {
+        write_raw_error(stderr, "no input file provided.");
+        return 1;
+    }
+
+    if (!compile(argv[1], &error)) {
         write_error(stderr, &error);
         return 1;
     }
 
-    struct rm_program program = {0};
-    if (!contextualise(&statements, &program, &error)) {
-        write_error(stderr, &error);
-        return 1;
-    }
-
-    if (!type_check(program.statements, &error)) {
-        write_error(stderr, &error);
-        return 1;
-    }
-
-    generate_c(&program);
+    //generate_c(&program);
     return 0;
 }
