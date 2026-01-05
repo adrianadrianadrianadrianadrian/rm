@@ -5,6 +5,7 @@
 #include "error.h"
 #include "context.h"
 #include "soundness.h"
+#include "type_checker.h"
 
 int compile(char *file_name, struct error *error) {
     struct list_statement statements = {0};
@@ -14,11 +15,7 @@ int compile(char *file_name, struct error *error) {
     struct rm_program program = {0};
     contextualise(&statements, &program);
     if (!soundness_check(&program, error)) return 0;
-    // if (!type_check(program.statements, &error)) {
-    //     write_error(stderr, &error);
-    //     return 1;
-    // }
-
+    if (!type_check(&program, error)) return 0;
     return 1;
 }
 

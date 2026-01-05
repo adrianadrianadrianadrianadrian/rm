@@ -660,7 +660,8 @@ int type_check_single(struct statement_context *s, struct error *error)
     // UNREACHABLE("type_check_single dropped out of a switch on all kinds of statements.");
 }
 
-int type_check(struct list_statement_context statements, struct error *error) {
+int type_check(struct rm_program *program, struct error *error) {
+    struct list_statement_context statements = program->statements;
     for (size_t i = 0; i < statements.size; i++) {
         if (!type_check_single(&statements.data[i], error)) return 0;
     }

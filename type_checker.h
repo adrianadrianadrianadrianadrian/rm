@@ -5,6 +5,6 @@
 #include "context.h"
 #include "error.h"
 
-int type_check(struct list_statement_context statements, struct error *error);
+int type_check(struct rm_program *program, struct error *error);
 
 #endif
