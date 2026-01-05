@@ -317,7 +317,6 @@ void contextualise(struct list_statement *s, struct rm_program *out)
         show_statement_context(&c);
         printf("\n");
 #endif
-
     }
 }
 

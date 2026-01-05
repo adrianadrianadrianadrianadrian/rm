@@ -4,7 +4,6 @@
 #include "c.h"
 #include <regex.h>
 #include "../utils.h"
-#include "../type_inference.h"
 
 void write_type(struct type *ty, FILE *file);
 
@@ -441,11 +440,11 @@ void write_function_expression(struct function_expression *e,
         struct type param_type = {0};
         
         // TODO: later we'll attach the type to the expression earlier on.
-        assert(infer_expression_type(&e->params->data[i],
-                                     global_context,
-                                     scoped_variables,
-                                     &param_type,
-                                     NULL));
+        // assert(infer_expression_type(&e->params->data[i],
+        //                              global_context,
+        //                              scoped_variables,
+        //                              &param_type,
+        //                              NULL));
         write_expression(&e->params->data[i], global_context, scoped_variables, file);
         if (i < param_count - 1) {
             fprintf(file, ", ");

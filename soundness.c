@@ -32,6 +32,9 @@ int check_literal_expression_soundness(struct literal_expression *e,
                     return 1;
                 }
             }
+            append_list_char_slice(error, "`");
+            append_list_char_slice(error, e->name->data);
+            append_list_char_slice(error, "` is not in the current scope.");
             return 0;
         }
         case LITERAL_STRUCT:
