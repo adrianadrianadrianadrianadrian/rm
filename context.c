@@ -4,11 +4,19 @@
 #include <string.h>
 #include "utils.h"
 #include "context.h"
+#include "type_inference.h"
 
 #ifdef DEBUG_CONTEXT
 void show_statement_context(struct statement_context *s);
 void show_global_context(struct global_context *gc);
 #endif
+
+static void add_error_inner(struct statement_metadata *metadata,
+                            char *error_message,
+                            struct error *out)
+{
+    add_error(metadata->row, metadata->col, metadata->file_name, out, error_message);
+}
 
 void type_declaration_global_context(struct statement *s,
                                      struct global_context *gc)
@@ -73,39 +81,72 @@ void add_scoped_variable(struct statement_context *c,
     }
 
     struct scoped_variable var = (struct scoped_variable) {
-        .name = c->binding_statement->variable_name,
+        .name = c->binding_statement.binding_statement->variable_name,
+        .type = c->binding_statement.value_type
     };
     
     list_append(scoped_variables, var);
 }
 
-void contextualise_statement(struct statement *s,
-                             struct global_context *global_context,
-                             struct list_scoped_variable *scoped_variables,
-                             struct statement_context *out)
+int contextualise_statement(struct statement *s,
+                            struct global_context *global_context,
+                            struct list_scoped_variable *scoped_variables,
+                            struct statement_context *out,
+                            struct error *error)
 {
+    struct list_char error_message = list_create(char, 100);
     switch (s->kind) {
         case BINDING_STATEMENT:
         {
+            struct type value_type = {0};
+            if (!infer_expression_type(&s->binding_statement.value,
+                                       global_context,
+                                       scoped_variables,
+                                       &value_type,
+                                       &error_message))
+            {
+                add_error_inner(&s->metadata, error_message.data, error);
+                return 0;
+            }
+                                       
             *out = (struct statement_context) {
                 .kind = s->kind,
-                .binding_statement = &s->binding_statement,
+                .binding_statement = (struct binding_statement_context) {
+                    .binding_statement = &s->binding_statement,
+                    .value_type = value_type
+                },
                 .global_context = global_context,
                 .scoped_variables = copy_scoped_variables(scoped_variables),
                 .metadata = &s->metadata
             };
-            return;
+
+            return 1;
         }
         case RETURN_STATEMENT:
         {
+            struct type return_type = {0};
+            if (!infer_expression_type(&s->expression,
+                                       global_context,
+                                       scoped_variables,
+                                       &return_type,
+                                       &error_message))
+            {
+                add_error_inner(&s->metadata, error_message.data, error);
+                return 0;
+            }
+
             *out = (struct statement_context) {
                 .kind = s->kind,
-                .expression = &s->expression,
+                .expression = (struct expression_context) {
+                    .expression = &s->expression,
+                    .type = return_type
+                },
                 .global_context = global_context,
                 .scoped_variables = copy_scoped_variables(scoped_variables),
                 .metadata = &s->metadata
             };
-            return;
+
+            return 1;
         }
         case TYPE_DECLARATION_STATEMENT:
         {
@@ -120,17 +161,21 @@ void contextualise_statement(struct statement *s,
                     for (size_t i = 0; i < fn.params.size; i++) {
                         struct scoped_variable param = (struct scoped_variable) {
                             .name = fn.params.data[i].field_name,
+                            // TODO: infer type
                         };
                         list_append(&fn_scoped_variables, param);
                     }
                     
                     for (size_t i = 0; i < s->type_declaration.statements->size; i++) {
                         struct statement_context c = {0};
-                        contextualise_statement(
-                                &s->type_declaration.statements->data[i],
-                                global_context,
-                                &fn_scoped_variables,
-                                &c);
+                        if (!contextualise_statement(&s->type_declaration.statements->data[i],
+                                                     global_context,
+                                                     &fn_scoped_variables,
+                                                     &c,
+                                                     error))
+                        {
+                            return 0;
+                        }
                         list_append(statements, c);
                         add_scoped_variable(&c, &fn_scoped_variables);
                     }
@@ -145,7 +190,8 @@ void contextualise_statement(struct statement *s,
                         .scoped_variables = copy_scoped_variables(&fn_scoped_variables),
                         .metadata = &s->metadata
                     };
-                    return;
+
+                    return 1;
                 }
                 case TY_PRIMITIVE:
                 case TY_STRUCT:
@@ -161,12 +207,11 @@ void contextualise_statement(struct statement *s,
                         .scoped_variables = NULL,
                         .metadata = &s->metadata
                     };
-                    return;
+                    return 1;
                 }
                 default:
                     UNREACHABLE("type_declaration type not handled");
             }
-            return;
         }
         case BLOCK_STATEMENT:
         {
@@ -176,11 +221,14 @@ void contextualise_statement(struct statement *s,
 
             for (size_t i = 0; i < s->statements->size; i++) {
                 struct statement_context c = {0};
-                contextualise_statement(
-                        &s->statements->data[i],
-                        global_context,
-                        &block_scoped_variables,
-                        &c);
+                if (!contextualise_statement(&s->statements->data[i],
+                                             global_context,
+                                             &block_scoped_variables,
+                                             &c,
+                                             error))
+                {
+                    return 0;
+                }
                 list_append(statements, c);
                 add_scoped_variable(&c, &block_scoped_variables);
             }
@@ -192,30 +240,49 @@ void contextualise_statement(struct statement *s,
                 .scoped_variables = copy_scoped_variables(scoped_variables),
                 .metadata = &s->metadata
             };
-            return;
+
+            return 1;
         }
         case IF_STATEMENT:
         {
             struct statement_context *success = malloc(sizeof(*success));
             struct statement_context *else_statement = malloc(sizeof(*else_statement));
-            contextualise_statement(
-                    s->if_statement.success_statement,
-                    global_context,
-                    scoped_variables,
-                    success);
+            if (!contextualise_statement(s->if_statement.success_statement,
+                                         global_context,
+                                         scoped_variables,
+                                         success,
+                                         error))
+            {
+                return 0;
+            }
 
             if (s->if_statement.else_statement != NULL) {
-                contextualise_statement(
-                    s->if_statement.else_statement,
-                    global_context,
-                    scoped_variables,
-                    else_statement);
+                if (!contextualise_statement(s->if_statement.else_statement,
+                                        global_context,
+                                        scoped_variables,
+                                        else_statement,
+                                        error))
+                {
+                    return 0;
+                }
+            }
+            
+            struct type condition_type = {0};
+            if (!infer_expression_type(&s->if_statement.condition,
+                                       global_context,
+                                       scoped_variables,
+                                       &condition_type,
+                                       &error_message))
+            {
+                add_error_inner(&s->metadata, error_message.data, error);
+                return 0;
             }
             
             *out = (struct statement_context) {
                 .kind = s->kind,
                 .if_statement_context = (struct if_statement_context) {
                     .condition = &s->if_statement.condition,
+                    .condition_type = condition_type,
                     .success_statement = success,
                     .else_statement = s->if_statement.else_statement != NULL
                         ? else_statement
@@ -225,39 +292,71 @@ void contextualise_statement(struct statement *s,
                 .scoped_variables = copy_scoped_variables(scoped_variables),
                 .metadata = &s->metadata
             };
-            return;
+
+            return 1;
         }
         case ACTION_STATEMENT:
         {
+            struct type action_type = {0};
+            if (!infer_expression_type(&s->if_statement.condition,
+                                       global_context,
+                                       scoped_variables,
+                                       &action_type,
+                                       &error_message))
+            {
+                add_error_inner(&s->metadata, error_message.data, error);
+                return 0;
+            }
+
             *out = (struct statement_context) {
                 .kind = s->kind,
+                .expression = (struct expression_context) {
+                    .expression = &s->expression,
+                    .type = action_type
+                },
                 .global_context = global_context,
                 .scoped_variables = copy_scoped_variables(scoped_variables),
-                .expression = &s->expression,
                 .metadata = &s->metadata
             };
-            return;
+
+            return 1;
         }
         case WHILE_LOOP_STATEMENT:
         {
             struct statement_context *do_statement = malloc(sizeof(*do_statement));
-            contextualise_statement(
-                s->while_loop_statement.do_statement,
-                global_context,
-                scoped_variables,
-                do_statement);
+            if (!contextualise_statement(s->while_loop_statement.do_statement,
+                                         global_context,
+                                         scoped_variables,
+                                         do_statement,
+                                         error))
+            {
+                return 0;
+            }
+
+            struct type condition_type = {0};
+            if (!infer_expression_type(&s->while_loop_statement.condition,
+                                       global_context,
+                                       scoped_variables,
+                                       &condition_type,
+                                       &error_message))
+            {
+                add_error_inner(&s->metadata, error_message.data, error);
+                return 0;
+            }
 
             *out = (struct statement_context) {
                 .kind = s->kind,
                 .while_loop_statement = (struct while_loop_statement_context) {
                     .condition = &s->while_loop_statement.condition,
+                    .condition_type = condition_type,
                     .do_statement = do_statement
                 },
                 .scoped_variables = copy_scoped_variables(scoped_variables),
                 .global_context = global_context,
                 .metadata = &s->metadata
             };
-            return;
+
+            return 1;
         }
         case BREAK_STATEMENT:
         {
@@ -267,11 +366,12 @@ void contextualise_statement(struct statement *s,
                 .global_context = global_context,
                 .metadata = &s->metadata
             };
-            return;
+
+            return 1;
         }
         case SWITCH_STATEMENT:
             TODO("switch statement, context");
-            return;
+            return 0;
         case C_BLOCK_STATEMENT:
         {
             *out = (struct statement_context) {
@@ -281,7 +381,7 @@ void contextualise_statement(struct statement *s,
                 .scoped_variables = copy_scoped_variables(scoped_variables),
                 .metadata = &s->metadata
             };
-            return;
+            return 1;
         }
         default:
             UNREACHABLE("statement kind not handled");
@@ -365,7 +465,7 @@ void show_statement_context(struct statement_context *s)
     switch (s->kind) {
         case BINDING_STATEMENT:
         {
-            printf("binding_statement:%s", s->binding_statement->variable_name.data);
+            printf("binding_statement:%s", s->binding_statement.binding_statement->variable_name.data);
             show_scoped_variables(&s->scoped_variables);
             break;
         }

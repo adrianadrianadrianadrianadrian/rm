@@ -11,6 +11,7 @@ struct global_context {
 
 typedef struct scoped_variable {
     struct list_char name;
+    struct type type;
 } scoped_variable;
 
 struct_list(scoped_variable);
@@ -22,20 +23,32 @@ struct type_declaration_statement_context {
 
 struct while_loop_statement_context {
     struct expression *condition;
+    struct type condition_type;
     struct statement_context *do_statement;
 };
 
 struct if_statement_context {
     struct expression *condition;
+    struct type condition_type;
     struct statement_context *success_statement;
     struct statement_context *else_statement;
+};
+
+struct expression_context {
+    struct expression *expression;
+    struct type type;
+};
+
+struct binding_statement_context {
+    struct binding_statement *binding_statement;
+    struct type value_type;
 };
 
 typedef struct statement_context {
     enum statement_kind kind;
     union {
-        struct expression *expression;
-        struct binding_statement *binding_statement;
+        struct expression_context expression;
+        struct binding_statement_context binding_statement;
         struct type_declaration_statement_context type_declaration;
         struct list_statement_context *block_statements;
         struct while_loop_statement_context while_loop_statement;

@@ -232,7 +232,7 @@ int check_binding_statement_soundness(struct statement_context *ctx, struct erro
     struct list_char error_message = list_create(char, 100);
 
     for (size_t i = 0; i < ctx->scoped_variables.size; i++) {
-        struct list_char *binding_name = &ctx->binding_statement->variable_name;
+        struct list_char *binding_name = &ctx->binding_statement.binding_statement->variable_name;
         if (list_char_eq(&ctx->scoped_variables.data[i].name, binding_name))
         {
             append_list_char_slice(&error_message, "`");
@@ -243,7 +243,7 @@ int check_binding_statement_soundness(struct statement_context *ctx, struct erro
         }
     }
 
-    if (!check_expression_soundness(&ctx->binding_statement->value,
+    if (!check_expression_soundness(&ctx->binding_statement.binding_statement->value,
                                     ctx->global_context,
                                     &ctx->scoped_variables,
                                     &error_message))
@@ -283,7 +283,7 @@ int check_return_statement_soundness(struct statement_context *ctx,
     assert(ctx->kind == RETURN_STATEMENT);
     struct list_char error_message = list_create(char, 100);
 
-    if (!check_expression_soundness(ctx->expression,
+    if (!check_expression_soundness(ctx->expression.expression,
                                     ctx->global_context,
                                     &ctx->scoped_variables,
                                     &error_message))
@@ -310,7 +310,7 @@ int check_action_statement_soundness(struct statement_context *ctx,
 {
     assert(ctx->kind == ACTION_STATEMENT);
     struct list_char error_message = list_create(char, 100);
-    if (!check_expression_soundness(ctx->expression,
+    if (!check_expression_soundness(ctx->expression.expression,
                                     ctx->global_context,
                                     &ctx->scoped_variables,
                                     &error_message))
