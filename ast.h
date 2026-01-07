@@ -175,6 +175,7 @@ struct member_access_expression {
 
 typedef struct expression {
     enum expression_kind kind;
+    unsigned int id;
     union {
         struct unary_expression unary;
         struct literal_expression literal;
@@ -297,6 +298,7 @@ struct c_block_statement {
 
 typedef struct statement {
     enum statement_kind kind;
+    unsigned long id;
     union {
         struct expression expression;
         struct binding_statement binding_statement;
@@ -307,7 +309,6 @@ typedef struct statement {
         struct switch_statement switch_statement;
         struct c_block_statement c_block_statement;
     };
-    struct statement_metadata metadata;
 } statement;
 
 struct_list(statement);

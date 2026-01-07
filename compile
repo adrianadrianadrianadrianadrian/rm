@@ -7,8 +7,6 @@ gcc -g -o compiler \
     parser.c \
     lowering/c.c \
     error.c \
-    context.c \
-    type_checker.c \
     type_inference.c \
     soundness.c \
     -lm \
@@ -16,6 +14,6 @@ gcc -g -o compiler \
 
 mkdir -p target
 ./compiler "$1"
-rm compiler
-cd target
-gcc -o bin c_output.c
+# rm compiler
+# cd target
+# gcc -o bin c_output.c
