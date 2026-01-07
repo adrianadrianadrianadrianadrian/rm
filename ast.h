@@ -286,11 +286,11 @@ struct switch_statement {
 	struct list_case_statement cases;
 };
 
-struct statement_metadata {
+typedef struct statement_metadata {
     unsigned int row;
     unsigned int col;
     char *file_name;
-};
+} statement_metadata;
 
 struct c_block_statement {
     struct list_char *raw_c;
@@ -309,6 +309,7 @@ typedef struct statement {
         struct switch_statement switch_statement;
         struct c_block_statement c_block_statement;
     };
+    struct statement_metadata metadata;
 } statement;
 
 struct_list(statement);

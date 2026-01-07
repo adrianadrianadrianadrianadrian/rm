@@ -44,7 +44,7 @@ void add_error_inner(struct token_buffer *s, struct error *out, char *message)
     add_error(tok_metadata->row, tok_metadata->col, tok_metadata->file_name, out, message);
 }
 
-struct statement_metadata statement_metadata(const struct token_buffer *s)
+struct statement_metadata get_statement_metadata(const struct token_buffer *s)
 {
     struct token_metadata *tok_metadata = get_token_metadata(s, s->current_position);
     return (struct statement_metadata) {
@@ -995,7 +995,7 @@ int parse_statement(struct parser_state *s, struct statement *out, struct error 
 
 int parse_break_statement(struct parser_state *s, struct statement *out, struct error *error)
 {
-    struct statement_metadata metadata = statement_metadata(s->buffer);
+    struct statement_metadata metadata = get_statement_metadata(s->buffer);
     struct token tmp = {0};
     if (!get_token_type(s->buffer, &tmp, BREAK_KEYWORD)) return 0;
     if (!get_token_type(s->buffer, &tmp, SEMICOLON)) {
@@ -1005,7 +1005,8 @@ int parse_break_statement(struct parser_state *s, struct statement *out, struct 
 
     *out = (struct statement) {
         .kind = BREAK_STATEMENT,
-        .id = s->next_statement_id++
+        .id = s->next_statement_id++,
+        .metadata = metadata
     };
 
     return 1;
@@ -1015,7 +1016,7 @@ int parse_return_statement(struct parser_state *s,
                            struct statement *out,
                            struct error *error)
 {
-    struct statement_metadata metadata = statement_metadata(s->buffer);
+    struct statement_metadata metadata = get_statement_metadata(s->buffer);
     struct token tmp = {0};
     struct expression expression = {0};
 
@@ -1028,7 +1029,8 @@ int parse_return_statement(struct parser_state *s,
                 .expression = (struct expression) {
                     .id = s->next_expression_id++,
                     .kind = VOID_EXPRESSION
-                }
+                },
+                .metadata = metadata
             };
             return 1;
         }
@@ -1045,7 +1047,8 @@ int parse_return_statement(struct parser_state *s,
     *out = (struct statement) {
         .kind = RETURN_STATEMENT,
         .id = s->next_statement_id++,
-        .expression = expression
+        .expression = expression,
+        .metadata = metadata
     };
     return 1;
 }
@@ -1054,7 +1057,7 @@ int parse_binding_statement(struct parser_state *s,
                             struct statement *out,
                             struct error *error)
 {
-    struct statement_metadata metadata = statement_metadata(s->buffer);
+    struct statement_metadata metadata = get_statement_metadata(s->buffer);
     struct token tmp = {0};
     struct type type = {0};
     struct expression expression = {0};
@@ -1113,7 +1116,8 @@ int parse_binding_statement(struct parser_state *s,
             .variable_type = type,
             .value = expression,
             .has_type = has_type
-        }
+        },
+        .metadata = metadata
     };
 
     return 1;
@@ -1123,7 +1127,7 @@ int parse_block_statement(struct parser_state *s,
                           struct statement *out,
                           struct error *error)
 {
-    struct statement_metadata metadata = statement_metadata(s->buffer);
+    struct statement_metadata metadata = get_statement_metadata(s->buffer);
     struct token tmp = {0};
     if (!get_token_type(s->buffer, &tmp, OPEN_CURLY_PAREN)) return 0;
 
@@ -1146,7 +1150,8 @@ int parse_block_statement(struct parser_state *s,
     *out = (struct statement) {
         .kind = BLOCK_STATEMENT,
         .id = s->next_statement_id++,
-        .statements = statements
+        .statements = statements,
+        .metadata = metadata
     };
 
     return 1;
@@ -1156,7 +1161,7 @@ int parse_if_statement(struct parser_state *s,
                        struct statement *out,
                        struct error *error)
 {
-    struct statement_metadata metadata = statement_metadata(s->buffer);
+    struct statement_metadata metadata = get_statement_metadata(s->buffer);
     struct token tmp = {0};
     struct expression condition = {0};
     struct statement *success_statement = malloc(sizeof(*success_statement));
@@ -1196,7 +1201,8 @@ int parse_if_statement(struct parser_state *s,
             .condition = condition,
             .success_statement = success_statement,
             .else_statement = else_statement
-        }
+        },
+        .metadata = metadata
     };
 
     return 1;
@@ -1204,7 +1210,7 @@ int parse_if_statement(struct parser_state *s,
 
 int parse_action_statement(struct parser_state *s, struct statement *out, struct error *error)
 {
-    struct statement_metadata metadata = statement_metadata(s->buffer);
+    struct statement_metadata metadata = get_statement_metadata(s->buffer);
     struct token tmp = {0};
     struct expression expression = {0};
     if (!parse_expression(s, &expression, error)) return 0;
@@ -1216,7 +1222,8 @@ int parse_action_statement(struct parser_state *s, struct statement *out, struct
     *out = (struct statement) {
         .kind = ACTION_STATEMENT,
         .id = s->next_statement_id++,
-        .expression = expression
+        .expression = expression,
+        .metadata = metadata
     };
 
     return 1;
@@ -1226,7 +1233,7 @@ int parse_while_loop_statement(struct parser_state *s,
                                struct statement *out,
                                struct error *error)
 {
-    struct statement_metadata metadata = statement_metadata(s->buffer);
+    struct statement_metadata metadata = get_statement_metadata(s->buffer);
     struct token tmp = {0};
     struct statement *do_statement = malloc(sizeof(*do_statement));
     struct expression expression = {0};
@@ -1254,7 +1261,8 @@ int parse_while_loop_statement(struct parser_state *s,
         .while_loop_statement = (struct while_loop_statement) {
             .condition = expression,
             .do_statement = do_statement
-        }
+        },
+        .metadata = metadata
     };
 
     return 1;
@@ -1264,7 +1272,7 @@ int parse_type_declaration(struct parser_state *s,
                            struct statement *out,
                            struct error *error)
 {
-    struct statement_metadata metadata = statement_metadata(s->buffer);
+    struct statement_metadata metadata = get_statement_metadata(s->buffer);
     struct type type = {0};
     
     if (!parse_type(s, &type, 1, 0, error)) return 0;
@@ -1275,7 +1283,8 @@ int parse_type_declaration(struct parser_state *s,
             .type_declaration = (struct type_declaration_statement) {
                 .type = type,
                 .statements = NULL
-            }
+            },
+            .metadata = metadata
         };
         return 1;
     }
@@ -1292,7 +1301,8 @@ int parse_type_declaration(struct parser_state *s,
         .type_declaration = (struct type_declaration_statement) {
             .type = type,
             .statements = body.statements
-        }
+        },
+        .metadata = metadata
     };
 
     return 1;
@@ -1322,7 +1332,7 @@ int parse_switch_statement(struct parser_state *s,
                            struct statement *out,
                            struct error *error)
 {
-    struct statement_metadata metadata = statement_metadata(s->buffer);
+    struct statement_metadata metadata = get_statement_metadata(s->buffer);
     struct token tmp = {0};
     struct expression switch_on = {0};
     struct list_case_statement cases = list_create(case_statement, 10);
@@ -1347,7 +1357,8 @@ int parse_switch_statement(struct parser_state *s,
         .switch_statement = (struct switch_statement) {
             .switch_expression = switch_on,
             .cases = cases
-        }
+        },
+        .metadata = metadata
     };
     
     return 1;
@@ -1357,7 +1368,7 @@ int parse_c_block_statement(struct parser_state *s,
                             struct statement *out,
                             struct error *error)
 {
-    struct statement_metadata metadata = statement_metadata(s->buffer);
+    struct statement_metadata metadata = get_statement_metadata(s->buffer);
     struct token tmp = {0};
     if (!get_token_type(s->buffer, &tmp, C_LITERAL)) return 0;
 
@@ -1366,7 +1377,8 @@ int parse_c_block_statement(struct parser_state *s,
         .id = s->next_statement_id++,
         .c_block_statement = (struct c_block_statement) {
             .raw_c = tmp.identifier
-        }
+        },
+        .metadata = metadata
     };
 
     return 1;
