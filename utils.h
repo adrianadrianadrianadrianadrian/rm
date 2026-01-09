@@ -38,6 +38,37 @@
         (l)->size += 1;                                     \
     } while (0)
 
+// Look up table (LUT)
+#define LUT_NAME(ty) lut_##ty
+
+#define struct_lut(ty)                                      \
+    struct LUT_NAME(ty) {                                   \
+        ty *data;                                           \
+        size_t capacity;                                    \
+    }
+
+#define lut_create(ty, cap)                                 \
+    (struct LUT_NAME(ty)) {                                 \
+        .data = malloc(sizeof(ty) * cap),                   \
+        .capacity = cap                                     \
+    }
+
+#define lut_add(l, i, item)                                     \
+    do {                                                        \
+        if ((i) + 1 > (l)->capacity) {                          \
+            size_t item_size = sizeof(*(l)->data);              \
+            size_t new_capacity = 2*(i)*sizeof(*(l)->data);     \
+            void *data = malloc(item_size * new_capacity);      \
+            memcpy(data, (l)->data, (l)->capacity * item_size); \
+            free((l)->data);                                    \
+            (l)->data = data;                                   \
+            (l)->capacity = new_capacity;                       \
+        }                                                       \
+        (l)->data[(i)] = item;                                  \
+    } while (0)
+
+#define lut_get(l, i) (l)->data[i]
+
 #define TODO(msg) \
     fprintf(stderr, "%s:%d: todo: `%s`\n", __FILE__, __LINE__, msg); \
     exit(1);

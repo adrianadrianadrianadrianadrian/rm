@@ -12,6 +12,9 @@ struct parser_state {
     struct token_buffer *buffer;
     unsigned long next_expression_id;
     unsigned long next_statement_id;
+    struct list_type *fn_types;
+    struct list_type *data_types;
+    struct lut_statement_metadata *metadata_lookup;
 };
 
 #define parser_t int (*)(struct parser_state *, void *, struct error *error)
@@ -1005,10 +1008,9 @@ int parse_break_statement(struct parser_state *s, struct statement *out, struct 
 
     *out = (struct statement) {
         .kind = BREAK_STATEMENT,
-        .id = s->next_statement_id++,
-        .metadata = metadata
+        .id = s->next_statement_id++
     };
-
+    lut_add(s->metadata_lookup, out->id, metadata);
     return 1;
 }
 
@@ -1029,9 +1031,9 @@ int parse_return_statement(struct parser_state *s,
                 .expression = (struct expression) {
                     .id = s->next_expression_id++,
                     .kind = VOID_EXPRESSION
-                },
-                .metadata = metadata
+                }
             };
+            lut_add(s->metadata_lookup, out->id, metadata);
             return 1;
         }
 
@@ -1047,9 +1049,9 @@ int parse_return_statement(struct parser_state *s,
     *out = (struct statement) {
         .kind = RETURN_STATEMENT,
         .id = s->next_statement_id++,
-        .expression = expression,
-        .metadata = metadata
+        .expression = expression
     };
+    lut_add(s->metadata_lookup, out->id, metadata);
     return 1;
 }
 
@@ -1116,10 +1118,9 @@ int parse_binding_statement(struct parser_state *s,
             .variable_type = type,
             .value = expression,
             .has_type = has_type
-        },
-        .metadata = metadata
+        }
     };
-
+    lut_add(s->metadata_lookup, out->id, metadata);
     return 1;
 }
 
@@ -1146,14 +1147,13 @@ int parse_block_statement(struct parser_state *s,
             break;
         }
     }
-
+    
     *out = (struct statement) {
         .kind = BLOCK_STATEMENT,
         .id = s->next_statement_id++,
-        .statements = statements,
-        .metadata = metadata
+        .statements = statements
     };
-
+    lut_add(s->metadata_lookup, out->id, metadata);
     return 1;
 }
 
@@ -1201,10 +1201,9 @@ int parse_if_statement(struct parser_state *s,
             .condition = condition,
             .success_statement = success_statement,
             .else_statement = else_statement
-        },
-        .metadata = metadata
+        }
     };
-
+    lut_add(s->metadata_lookup, out->id, metadata);
     return 1;
 }
 
@@ -1222,10 +1221,9 @@ int parse_action_statement(struct parser_state *s, struct statement *out, struct
     *out = (struct statement) {
         .kind = ACTION_STATEMENT,
         .id = s->next_statement_id++,
-        .expression = expression,
-        .metadata = metadata
+        .expression = expression
     };
-
+    lut_add(s->metadata_lookup, out->id, metadata);
     return 1;
 }
 
@@ -1261,10 +1259,9 @@ int parse_while_loop_statement(struct parser_state *s,
         .while_loop_statement = (struct while_loop_statement) {
             .condition = expression,
             .do_statement = do_statement
-        },
-        .metadata = metadata
+        }
     };
-
+    lut_add(s->metadata_lookup, out->id, metadata);
     return 1;
 }
 
@@ -1283,9 +1280,9 @@ int parse_type_declaration(struct parser_state *s,
             .type_declaration = (struct type_declaration_statement) {
                 .type = type,
                 .statements = NULL
-            },
-            .metadata = metadata
+            }
         };
+        lut_add(s->metadata_lookup, out->id, metadata);
         return 1;
     }
 
@@ -1301,10 +1298,9 @@ int parse_type_declaration(struct parser_state *s,
         .type_declaration = (struct type_declaration_statement) {
             .type = type,
             .statements = body.statements
-        },
-        .metadata = metadata
+        }
     };
-
+    lut_add(s->metadata_lookup, out->id, metadata);
     return 1;
 }
 
@@ -1357,10 +1353,9 @@ int parse_switch_statement(struct parser_state *s,
         .switch_statement = (struct switch_statement) {
             .switch_expression = switch_on,
             .cases = cases
-        },
-        .metadata = metadata
+        }
     };
-    
+    lut_add(s->metadata_lookup, out->id, metadata);
     return 1;
 }
 
@@ -1377,10 +1372,9 @@ int parse_c_block_statement(struct parser_state *s,
         .id = s->next_statement_id++,
         .c_block_statement = (struct c_block_statement) {
             .raw_c = tmp.identifier
-        },
-        .metadata = metadata
+        }
     };
-
+    lut_add(s->metadata_lookup, out->id, metadata);
     return 1;
 }
 
@@ -1406,14 +1400,21 @@ int parse_top_level_statement(struct parser_state *s,
     return try_parse(s, out, error, (parser_t)parse_type_declaration);
 }
 
-int parse_rm_file(struct token_buffer *s,
-                  struct list_statement *out,
-                  struct error *error)
+int parse_file(struct token_buffer *s,
+               struct parsed_file *out,
+               struct error *error)
 {
+    struct list_type fn_types = list_create(type, 100);
+    struct list_type data_types = list_create(type, 100);
+    struct lut_statement_metadata metadata_lookup = lut_create(statement_metadata, 100);
+
     struct parser_state state = {
         .buffer = s,
         .next_expression_id = 0,
-        .next_statement_id = 0
+        .next_statement_id = 0,
+        .fn_types = &fn_types,
+        .data_types = &data_types,
+        .metadata_lookup = &metadata_lookup
     };
 
     struct list_statement statements = list_create(statement, 10);
@@ -1428,6 +1429,11 @@ int parse_rm_file(struct token_buffer *s,
         }
     }
 
-    *out = statements;
+    *out = (struct parsed_file) {
+        .fn_types = fn_types,
+        .data_types = data_types,
+        .metadata_lookup = metadata_lookup,
+        .statements = statements
+    };
     return 1;
 }

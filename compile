@@ -5,9 +5,7 @@ gcc -g -o compiler \
     lexer.c \
     utils.c \
     parser.c \
-    lowering/c.c \
     error.c \
-    type_inference.c \
     soundness.c \
     -lm \
     -D DEBUG_CONTEXT

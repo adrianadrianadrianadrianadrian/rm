@@ -10,12 +10,11 @@ typedef struct scoped_variable {
 } scoped_variable;
 
 struct_list(scoped_variable);
-struct_list(statement_metadata);
 
 struct context {
     struct list_type fn_types;
     struct list_type data_types;
-    struct list_statement_metadata metadata_by_statement_id;
+    struct lut_statement_metadata metadata_lookup;
     struct list_scoped_variable scoped_variables_by_statement_id;
     struct list_type type_by_expression_id;
 };
