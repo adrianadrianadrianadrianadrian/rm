@@ -4,7 +4,7 @@
 #include "utils.h"
 #include "lexer.h"
 #include "error.h"
-// #include "context.h"
+#include "context.h"
 // #include "soundness.h"
 // #include "type_checker.h"
 
@@ -13,6 +13,8 @@ int compile(char *file_name, struct error *error) {
     struct token_buffer tb = create_token_buffer(f, file_name);
     struct parsed_file parsed = {0};
     if (!parse_file(&tb, &parsed, error)) return 0;
+    struct context c = {0};
+    if (!contextualise(&parsed, &c, error)) return 0;
     // struct rm_program program = {0};
     // contextualise(&statements, &program);
     // if (!soundness_check(&program, error)) return 0;

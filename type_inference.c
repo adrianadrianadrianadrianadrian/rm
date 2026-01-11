@@ -305,7 +305,35 @@ int infer_expression_type(struct expression *e,
         }
     }
 
-    // TODO: remove
-    return 1;
     UNREACHABLE("infer_expression_type: fell out of switch case.");
+}
+
+struct type infer_full_type(struct type *incomplete_type,
+                            struct global_context *global_context,
+                            struct list_scoped_variable *scoped_variables)
+{
+    struct type output = {0};
+    switch (incomplete_type->kind) {
+        case TY_FUNCTION:
+        {
+            TODO("infer full type for functions. e.g a_param: fn read_all");
+        }
+        case TY_STRUCT:
+        {
+            find_struct_definition(global_context, incomplete_type->name, &output);
+            break;
+        }
+        case TY_ENUM:
+        {
+            find_enum_definition(global_context, incomplete_type->name, &output);
+            break;
+        }
+        case TY_PRIMITIVE:
+        {
+            output = *incomplete_type;
+            break;
+        }
+    }
+
+    return output;
 }

@@ -3,6 +3,8 @@
 
 #include "utils.h"
 #include "ast.h"
+#include "parser.h"
+#include "error.h"
 
 typedef struct scoped_variable {
     struct list_char name;
@@ -11,27 +13,19 @@ typedef struct scoped_variable {
 
 struct_list(scoped_variable);
 
+typedef struct statement_scope {
+    struct list_scoped_variable scoped_variables;
+} statement_scope;
+
+struct_lut(statement_scope);
+
 struct context {
-    struct list_type fn_types;
-    struct list_type data_types;
-    struct lut_statement_metadata metadata_lookup;
-    struct list_scoped_variable scoped_variables_by_statement_id;
-    struct list_type type_by_expression_id;
+    struct lut_statement_scope statement_scope_lookup;
+    struct lut_type expression_type_lookup;
 };
 
-void add_scoped_variable(struct context *c,
-                         struct scoped_variable *var,
-                         unsigned long statement_id);
-
-struct list_scoped_variable
-*get_statement_scoped_variables(struct context *c,
-                                unsigned long statement_id);
-
-void add_expression_type(struct context *c,
-                         struct type type,
-                         unsigned long expression_id);
-
-struct type *get_expression_type(struct context *c,
-                                 unsigned long expression_id);
+int contextualise(struct parsed_file *parsed_file,
+                  struct context *out,
+                  struct error *error);
 
 #endif

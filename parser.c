@@ -1400,6 +1400,30 @@ int parse_top_level_statement(struct parser_state *s,
     return try_parse(s, out, error, (parser_t)parse_type_declaration);
 }
 
+void add_type_declarations(struct parser_state *state,
+                           struct statement *statement)
+{
+    if (statement->kind != TYPE_DECLARATION_STATEMENT) {
+        return;
+    }
+
+    switch (statement->type_declaration.type.kind) {
+        case TY_STRUCT:
+        case TY_ENUM:
+        {
+            list_append(state->data_types, statement->type_declaration.type);
+            return;
+        }
+        case TY_FUNCTION:
+        {
+            list_append(state->fn_types, statement->type_declaration.type);
+            return;
+        }
+        default:
+            return;
+    }
+}
+
 int parse_file(struct token_buffer *s,
                struct parsed_file *out,
                struct error *error)
@@ -1407,7 +1431,7 @@ int parse_file(struct token_buffer *s,
     struct list_type fn_types = list_create(type, 100);
     struct list_type data_types = list_create(type, 100);
     struct lut_statement_metadata metadata_lookup = lut_create(statement_metadata, 100);
-
+    
     struct parser_state state = {
         .buffer = s,
         .next_expression_id = 0,
@@ -1418,21 +1442,22 @@ int parse_file(struct token_buffer *s,
     };
 
     struct list_statement statements = list_create(statement, 10);
-
     while (s->current_position < s->size) {
         struct statement statement = {0};
         if (parse_top_level_statement(&state, &statement, error)) {
             list_append(&statements, statement);
+            add_type_declarations(&state, &statement);
         } else {
-            //add_error_inner(s, error, "not allowed on the top level.");
             return 0;
         }
     }
 
     *out = (struct parsed_file) {
-        .fn_types = fn_types,
-        .data_types = data_types,
-        .metadata_lookup = metadata_lookup,
+        .global_context = (struct global_context) {
+            .fn_types = fn_types,
+            .data_types = data_types,
+            .metadata_lookup = metadata_lookup,
+        },
         .statements = statements
     };
     return 1;
