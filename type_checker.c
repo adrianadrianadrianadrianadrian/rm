@@ -125,17 +125,21 @@ int binding_statement_check(struct statement *s,
                             struct error *error)
 {
     assert(s->kind == BINDING_STATEMENT);
-
-    // if (s->binding_statement.binding_statement->has_type
-    //     && !type_eq(&s->binding_statement.value_type,
-    //                 &s->binding_statement.binding_statement->variable_type))
-    // {
-    //     add_error_inner(s->metadata,
-    //                     type_mismatch_generic_error(&s->binding_statement.binding_statement->variable_type, 
-    //                                                 &s->binding_statement.value_type).data,
-    //                     error);
-    //     return 0;
-    // }
+    if (s->binding_statement.has_type)
+    {
+        struct type actual_type =
+            lut_get(&context->expression_type_lookup, s->binding_statement.value.id);
+        // TODO: need to make sure we get the full type for non primitive annotations
+        if (!type_eq(&s->binding_statement.variable_type, &actual_type)) {
+            struct statement_metadata metadata =
+                lut_get(&global_context->metadata_lookup, s->id);
+            add_error_inner(&metadata,
+                            type_mismatch_generic_error(&s->binding_statement.variable_type, 
+                                                        &actual_type).data,
+                            error);
+        }
+        return 0;
+    }
 
     return 1;
 }
@@ -228,20 +232,25 @@ int type_check_action_statement(struct statement *s,
         // TODO: this expression should already have a type attached.
         struct expression *param_expr = &fn_expr->params->data[i];
         struct type *expected = fn.function_type.params.data[i].field_type;
+        struct type actual_type =
+            lut_get(&context->expression_type_lookup, param_expr->id);
 
-        // if (!type_eq(actual, expected)) {
-        //     append_list_char_slice(&error_message, "mismatch types; expected `");
-        //     append_list_char_slice(&error_message, show_type(expected).data);
-        //     append_list_char_slice(&error_message, "` for parameter '");
-        //     append_list_char_slice(&error_message, fn.function_type.params.data[i].field_name.data);
-        //     append_list_char_slice(&error_message, "' but got `");
-        //     append_list_char_slice(&error_message, show_type(actual).data);
-        //     append_list_char_slice(&error_message, "` (in function '");
-        //     append_list_char_slice(&error_message, fn.name->data);
-        //     append_list_char_slice(&error_message, "').");
-        //     add_error_inner(s->metadata, error_message.data, error);
-        //     return 0;
-        // }
+        if (!type_eq(&actual_type, expected)) {
+            struct list_char error_message = list_create(char, 100);
+            append_list_char_slice(&error_message, "mismatch types; expected `");
+            append_list_char_slice(&error_message, show_type(expected).data);
+            append_list_char_slice(&error_message, "` for parameter '");
+            append_list_char_slice(&error_message, fn.function_type.params.data[i].field_name.data);
+            append_list_char_slice(&error_message, "' but got `");
+            append_list_char_slice(&error_message, show_type(&actual_type).data);
+            append_list_char_slice(&error_message, "` (in function '");
+            append_list_char_slice(&error_message, fn.name->data);
+            append_list_char_slice(&error_message, "').");
+            struct statement_metadata metadata =
+                lut_get(&global_context->metadata_lookup, s->id);
+            add_error_inner(&metadata, error_message.data, error);
+            return 0;
+        }
     }
     return 1;
 }
@@ -256,66 +265,70 @@ int type_check_single(struct statement *s,
             return binding_statement_check(s, global_context, context, error);
         case TYPE_DECLARATION_STATEMENT:
         {
-            // if (s->type_declaration.type.kind != TY_FUNCTION) return 1;
-            // struct type *expected_return_type = s->type_declaration.type.function_type.return_type;
-            // struct list_statement_context *body = s->type_declaration.statements;
-            //
-            // for (size_t i = 0; i < body->size; i++) {
-            //     struct list_statement_context return_statements = all_return_statements(&body->data[i]);
-            //     if (return_statements.size) {
-            //         struct list_char error_message = list_create(char, 100);
-            //         for (size_t j = 0; j < return_statements.size; j++) {
-            //             struct statement_context *this = &return_statements.data[j];
-            //             assert(this->kind == RETURN_STATEMENT);
-            //             struct type actual = {0};
-            //             if (!infer_expression_type(this->expression,
-            //                                        this->global_context,
-            //                                        &this->scoped_variables,
-            //                                        &actual,
-            //                                        &error_message))
-            //             {
-            //                 // TODO: add error
-            //                 return 0;
-            //             }
-            //
-            //             if (!type_eq(expected_return_type, &actual)) {
-            //                 add_error_inner(this->metadata,
-            //                                 type_mismatch_generic_error(expected_return_type, &actual).data,
-            //                                 error);
-            //                 return 0;
-            //             }
-            //         }
-            //     } else {
-            //         if (!type_check_single(&s->type_declaration.statements->data[i], error)) return 0;
-            //     }
-            // }
+            if (s->type_declaration.type.kind != TY_FUNCTION) return 1;
+            struct type *expected_return_type = s->type_declaration.type.function_type.return_type;
+            struct list_statement *body = s->type_declaration.statements;
+
+            for (size_t i = 0; i < body->size; i++) {
+                struct list_statement return_statements = all_return_statements(&body->data[i]);
+                if (return_statements.size) {
+                    struct list_char error_message = list_create(char, 100);
+                    for (size_t j = 0; j < return_statements.size; j++) {
+                        struct statement *this = &return_statements.data[j];
+                        assert(this->kind == RETURN_STATEMENT);
+                        struct type actual_type =
+                            lut_get(&context->expression_type_lookup, this->expression.id);
+                        if (!type_eq(expected_return_type, &actual_type)) {
+                            struct statement_metadata metadata =
+                                lut_get(&global_context->metadata_lookup, s->id);
+                            add_error_inner(&metadata,
+                                            type_mismatch_generic_error(expected_return_type, &actual_type).data,
+                                            error);
+                            return 0;
+                        }
+                    }
+                } else {
+                    if (!type_check_single(&s->type_declaration.statements->data[i],
+                                           global_context,
+                                           context,
+                                           error))
+                    {
+                        return 0;
+                    }
+                }
+            }
             return 1;
         }
         case IF_STATEMENT:
         {
-            // struct if_statement_context *ctx = &s->if_statement_context;
-            // if (!is_boolean(&ctx->condition.type))
-            // {
-            //     add_error_inner(s->metadata, "the condition of an if statement must be a boolean.", error);
-            //     return 0;
-            // }
-            // 
-            // if (!type_check_single(ctx->success_statement, error)) return 0;
-            // if (ctx->else_statement != NULL
-            //     && !type_check_single(ctx->else_statement, error)) return 0;
-            
+            struct if_statement *if_statement = &s->if_statement;
+            struct type condition_type =
+                lut_get(&context->expression_type_lookup, if_statement->condition.id);
+            if (!is_boolean(&condition_type))
+            {
+                struct statement_metadata metadata =
+                    lut_get(&global_context->metadata_lookup, s->id);
+                add_error_inner(&metadata, "the condition of an if statement must be a boolean.", error);
+                return 0;
+            }
+            if (!type_check_single(if_statement->success_statement, global_context, context, error)) return 0;
+            if (if_statement->else_statement != NULL
+                && !type_check_single(if_statement->else_statement, global_context, context, error)) return 0;
             return 1;
         }
         case WHILE_LOOP_STATEMENT:
         {
-            // struct while_loop_statement_context *ctx = &s->while_loop_statement;
-            // if (!is_boolean(&ctx->condition.type))
-            // {
-            //     add_error_inner(s->metadata, "the condition of a while loop must be a boolean.", error);
-            //     return 0;
-            // }
-            // 
-            // if (!type_check_single(ctx->do_statement, error)) return 0;
+            struct while_loop_statement *while_statement = &s->while_loop_statement;
+            struct type condition_type =
+                lut_get(&context->expression_type_lookup, while_statement->condition.id);
+            if (!is_boolean(&condition_type))
+            {
+                struct statement_metadata metadata =
+                    lut_get(&global_context->metadata_lookup, s->id);
+                add_error_inner(&metadata, "the condition of a while loop must be a boolean.", error);
+                return 0;
+            }
+            if (!type_check_single(while_statement->do_statement, global_context, context, error)) return 0;
             return 1;
         }
         case BLOCK_STATEMENT:
