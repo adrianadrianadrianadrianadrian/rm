@@ -8,6 +8,7 @@ gcc -g -o compiler \
     error.c \
     context.c \
     soundness.c \
+    type_checker.c \
     type_inference.c \
     -lm \
     -D DEBUG_CONTEXT

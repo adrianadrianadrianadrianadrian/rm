@@ -5,6 +5,6 @@
 #include "context.h"
 #include "error.h"
 
-int type_check(struct rm_program *program, struct error *error);
+int type_check(struct parsed_file *parsed_file, struct context *context, struct error *error);
 
 #endif
