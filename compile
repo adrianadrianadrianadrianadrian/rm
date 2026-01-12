@@ -7,6 +7,7 @@ gcc -g -o compiler \
     parser.c \
     error.c \
     context.c \
+    soundness.c \
     type_inference.c \
     -lm \
     -D DEBUG_CONTEXT

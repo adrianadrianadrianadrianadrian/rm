@@ -53,7 +53,8 @@ int contextualise_statement(struct statement *s,
 {
     struct list_char error_message = list_create(char, 100);
     if (scoped_variables == NULL) {
-        *scoped_variables = list_create(scoped_variable, 10);
+        struct list_scoped_variable init = list_create(scoped_variable, 10);
+        scoped_variables = &init;
     }
 
     switch (s->kind) {
