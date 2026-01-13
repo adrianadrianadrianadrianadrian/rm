@@ -2,6 +2,7 @@
 #include <string.h>
 #include "ast.h"
 #include "context.h"
+#include "parser.h"
 #include "utils.h"
 #include <string.h>
 #include "type_checker.h"
@@ -13,6 +14,11 @@ int type_check_single(struct statement *s,
                       struct context *context,
                       struct error *error);
 int type_eq(struct type *l, struct type *r);
+int type_check_expression(struct expression *e,
+                          struct statement_metadata *statement_metadata,
+                          struct global_context *global_context,
+                          struct context *context,
+                          struct error *error);
 
 static void add_error_inner(struct statement_metadata *metadata,
                             char *error_message,
@@ -125,14 +131,24 @@ int binding_statement_check(struct statement *s,
                             struct error *error)
 {
     assert(s->kind == BINDING_STATEMENT);
+    struct statement_metadata metadata =
+        lut_get(&global_context->metadata_lookup, s->id);
+
+    if (!type_check_expression(&s->binding_statement.value,
+                               &metadata,
+                               global_context,
+                               context,
+                               error))
+    {
+        return 0;
+    }
+
     if (s->binding_statement.has_type)
     {
         struct type actual_type =
             lut_get(&context->expression_type_lookup, s->binding_statement.value.id);
         // TODO: need to make sure we get the full type for non primitive annotations
         if (!type_eq(&s->binding_statement.variable_type, &actual_type)) {
-            struct statement_metadata metadata =
-                lut_get(&global_context->metadata_lookup, s->id);
             add_error_inner(&metadata,
                             type_mismatch_generic_error(&s->binding_statement.variable_type, 
                                                         &actual_type).data,
@@ -140,7 +156,7 @@ int binding_statement_check(struct statement *s,
         }
         return 0;
     }
-
+    
     return 1;
 }
 
@@ -253,6 +269,100 @@ int type_check_action_statement(struct statement *s,
         }
     }
     return 1;
+}
+
+int unary_operator_allowed(enum unary_operator op,
+                           struct type *expression_type,
+                           struct list_char *error_message)
+{
+    switch (op) {
+        case BANG_UNARY:
+        {
+            if (!is_boolean(expression_type)) {
+                append_list_char_slice(error_message, "`!` can only be applied to boolean values.");
+                return 0;
+            }
+            return 1;
+        }
+        case STAR_UNARY:
+        case MINUS_UNARY:
+        {
+            return 0;
+        }
+    }
+}
+
+int type_check_function_expression(struct function_expression *fn,
+                                   struct statement_metadata *statement_metadata,
+                                   struct global_context *global_context,
+                                   struct context *context,
+                                   struct error *error)
+{
+    struct type fn_type = {0};
+    find_function_definition(fn->function_name, global_context, &fn_type);
+    assert(fn_type.kind == TY_FUNCTION);
+
+    if (fn->params->size > fn_type.function_type.params.size) {
+        add_error_inner(statement_metadata, "more params than fn allows.", error);
+        return 0;
+    }
+        
+    return 1;
+    // for (size_t i = 0; i < fn_type.function_type.params.size; i++) {
+    //     struct key_type_pair *param = &fn_type.function_type.params.data[i];
+    // }
+}
+
+int type_check_expression(struct expression *e,
+                          struct statement_metadata *statement_metadata,
+                          struct global_context *global_context,
+                          struct context *context,
+                          struct error *error)
+{
+    struct list_char error_message = list_create(char, 100);
+    struct type expression_type =
+        lut_get(&context->expression_type_lookup, e->id);
+
+    switch (e->kind) {
+        case LITERAL_EXPRESSION:
+        {
+            return 1;
+        }
+        case UNARY_EXPRESSION:
+        {
+            if (!unary_operator_allowed(e->unary.unary_operator,
+                                        &expression_type,
+                                        &error_message))
+            {
+                add_error_inner(statement_metadata, error_message.data, error);
+                return 0;
+            }
+            return type_check_expression(e->unary.expression,
+                                         statement_metadata,
+                                         global_context,
+                                         context,
+                                         error);
+        }
+        case BINARY_EXPRESSION:
+        {
+            TODO("binary fun");
+        }
+        case GROUP_EXPRESSION:
+            return type_check_expression(e->grouped,
+                                         statement_metadata,
+                                         global_context,
+                                         context,
+                                         error);
+        case FUNCTION_EXPRESSION:
+            return type_check_function_expression(&e->function,
+                                                  statement_metadata,
+                                                  global_context,
+                                                  context,
+                                                  error);
+        case VOID_EXPRESSION:
+        case MEMBER_ACCESS_EXPRESSION:
+            return 1;
+    };
 }
 
 int type_check_single(struct statement *s,

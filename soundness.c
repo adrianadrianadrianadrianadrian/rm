@@ -36,6 +36,14 @@ int check_literal_expression_soundness(struct literal_expression *e,
                     return 1;
                 }
             }
+            
+            for (size_t i = 0; i < global_context->fn_types.size; i++) {
+                struct type *fn_type = &global_context->fn_types.data[i];
+                if (list_char_eq(e->name, fn_type->name)) {
+                    return 1;
+                }
+            }
+
             append_list_char_slice(error, "`");
             append_list_char_slice(error, e->name->data);
             append_list_char_slice(error, "` is not in the current scope.");
