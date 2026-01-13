@@ -3,6 +3,7 @@
 #include "context.h"
 #include "parser.h"
 #include "error.h"
+#include "utils.h"
 #include <assert.h>
 
 static void add_error_inner(struct statement_metadata *metadata,
@@ -62,9 +63,14 @@ int check_literal_expression_soundness(struct literal_expression *e,
                     } else if (data_type->kind != TY_STRUCT) {
                         pairs = &data_type->struct_type.pairs;
                     } else {
-                        return 0;
+                        UNREACHABLE("data types are either enums or structs.");
                     }
                     assert(pairs);
+                    
+                    if (pairs->size < e->struct_enum.key_expr_pairs.size) {
+                        append_list_char_slice(error, "too many fields provided.");
+                        return 0;
+                    }
                     
                     for (size_t p = 0; p < pairs->size; p++) {
                         int found = 0;
@@ -89,12 +95,12 @@ int check_literal_expression_soundness(struct literal_expression *e,
                             append_list_char_slice(error, "` is missing.");
                             return 0;
                         }
-                        // TODO: check duplicate fields
                     }
+    
                     return 1;
                 }
             }
-            return 1;
+            return 0;
         }
         case LITERAL_HOLE:
         case LITERAL_NULL:
@@ -111,14 +117,6 @@ int check_literal_expression_soundness(struct literal_expression *e,
 int expression_is_literal_name(struct expression *e)
 {
     return e->kind == LITERAL_EXPRESSION && e->literal.kind == LITERAL_NAME;
-}
-
-int check_binary_expression_soundness(struct binary_expression *e,
-                                      struct global_context *global_context,
-                                      struct list_scoped_variable *scoped_variables,
-                                      struct list_char *error)
-{
-    return 1;
 }
 
 int check_expression_soundness(struct expression *e,
@@ -143,10 +141,8 @@ int check_expression_soundness(struct expression *e,
                                               scoped_variables,
                                               error);
         case BINARY_EXPRESSION:
-            return check_binary_expression_soundness(&e->binary,
-                                                     global_context,
-                                                     scoped_variables,
-                                                     error);
+            return check_expression_soundness(e->binary.l, global_context, scoped_variables, error)
+                && check_expression_soundness(e->binary.r, global_context, scoped_variables, error);
         case FUNCTION_EXPRESSION:
         {
             return 1;
@@ -263,14 +259,25 @@ int check_binding_statement_soundness(struct statement *s,
     struct list_char error_message = list_create(char, 100);
     struct list_scoped_variable *scoped_variables =
         &lut_get(&context->statement_scope_lookup, s->id).scoped_variables;
+    struct list_char *binding_name = &s->binding_statement.variable_name;
 
     for (size_t i = 0; i < scoped_variables->size; i++) {
-        struct list_char *binding_name = &s->binding_statement.variable_name;
-        if (list_char_eq(&scoped_variables->data[i].name, binding_name))
-        {
-            append_list_char_slice(&error_message, "`");
+        if (list_char_eq(binding_name, &scoped_variables->data[i].name)) {
+            append_list_char_slice(&error_message, "the binding name `");
             append_list_char_slice(&error_message, binding_name->data);
             append_list_char_slice(&error_message, "` is already defined in this scope.");
+            struct statement_metadata metadata =
+                lut_get(&global_context->metadata_lookup, s->id);
+            add_error_inner(&metadata, error_message.data, error);
+            return 0;
+        }
+    }
+    
+    for (size_t i = 0; i < global_context->fn_types.size; i++) {
+        if (list_char_eq(binding_name, global_context->fn_types.data[i].name)) {
+            append_list_char_slice(&error_message, "the binding name `");
+            append_list_char_slice(&error_message, binding_name->data);
+            append_list_char_slice(&error_message, "` conflicts with a function in this scope.");
             struct statement_metadata metadata =
                 lut_get(&global_context->metadata_lookup, s->id);
             add_error_inner(&metadata, error_message.data, error);

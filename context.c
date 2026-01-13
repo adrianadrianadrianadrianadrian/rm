@@ -155,7 +155,7 @@ int contextualise_statement(struct statement *s,
         {
             struct list_scoped_variable block_scoped_variables = copy_scoped_variables(scoped_variables);
             for (size_t i = 0; i < s->statements->size; i++) {
-                struct statement *this = &s->type_declaration.statements->data[i];
+                struct statement *this = &s->statements->data[i];
                 if (!contextualise_statement(this,
                                              global_context,
                                              &block_scoped_variables,
