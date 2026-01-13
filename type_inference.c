@@ -1,4 +1,5 @@
 #include "type_inference.h"
+#include "ast.h"
 #include <assert.h>
 
 int get_scoped_variable_type(struct list_scoped_variable *scoped_variables,
@@ -178,35 +179,40 @@ int infer_literal_expression_type(struct literal_expression *e,
     UNREACHABLE("infer_literal_expression_type: dropped out of switch.");
 }
 
-int infer_function_type(struct function_type *matched_fn,
+int infer_function_type(struct type *matched_fn,
                         struct global_context *global_context,
                         size_t value_count,
-                        struct type *out)
+                        struct type *out,
+                        struct list_char *error_message)
 {
-    if (matched_fn->params.size < value_count || value_count == 0) {
+    assert(matched_fn->kind == TY_FUNCTION);
+    if (matched_fn->function_type.params.size < value_count) {
+        append_list_char_slice(error_message, "too many values provided to `");
+        append_list_char_slice(error_message, matched_fn->name->data);
+        append_list_char_slice(error_message, "`");
         return 0;
     }
     
-    if (matched_fn->params.size == value_count) {
-        if (matched_fn->return_type->kind == TY_STRUCT) {
-            return find_struct_definition(global_context, matched_fn->return_type->name, out);
+    if (matched_fn->function_type.params.size == value_count) {
+        if (matched_fn->function_type.return_type->kind == TY_STRUCT) {
+            return find_struct_definition(global_context, matched_fn->function_type.return_type->name, out);
         }
 
-        *out = *matched_fn->return_type;
+        *out = *matched_fn->function_type.return_type;
         return 1;
     }
     
     struct type *inferred = malloc(sizeof(*inferred));
-    struct list_key_type_pair params = list_create(key_type_pair, matched_fn->params.size - value_count);
-    for (size_t i = value_count; i < matched_fn->params.size; i++) {
-        list_append(&params, matched_fn->params.data[i]);
+    struct list_key_type_pair params = list_create(key_type_pair, matched_fn->function_type.params.size - value_count);
+    for (size_t i = value_count; i < matched_fn->function_type.params.size; i++) {
+        list_append(&params, matched_fn->function_type.params.data[i]);
     }
 
     *out = (struct type) {
         .kind = TY_FUNCTION,
         .function_type = (struct function_type) {
             .params = params,
-            .return_type = matched_fn->return_type
+            .return_type = matched_fn->function_type.return_type
         }
     };
     return 1;
@@ -245,9 +251,9 @@ int infer_expression_type(struct expression *e,
             size_t value_count = e->function.params->size;
             
             for (size_t i = 0; i < global_context->fn_types.size; i++) {
-                struct function_type global_fn = global_context->fn_types.data[i].function_type;
+                struct type *global_fn = &global_context->fn_types.data[i];
                 if (list_char_eq(e->function.function_name, global_context->fn_types.data[i].name)) {
-                    return infer_function_type(&global_fn, global_context, value_count, out);
+                    return infer_function_type(global_fn, global_context, value_count, out, error);
                 }
             }
 
@@ -255,12 +261,15 @@ int infer_expression_type(struct expression *e,
                 struct type *fn = &scoped_variables->data[i].type;
                 if (fn->kind == TY_FUNCTION) {
                     if (list_char_eq(e->function.function_name, &scoped_variables->data[i].name)) {
-                        return infer_function_type(&fn->function_type, global_context, value_count, out);
+                        return infer_function_type(fn, global_context, value_count, out, error);
                     }
                 }
             }
 
-            UNREACHABLE("function does not exist in global_context.");
+            append_list_char_slice(error, "the function `");
+            append_list_char_slice(error, e->function.function_name->data);
+            append_list_char_slice(error, "` does not exist.");
+            return 0;
         }
         case MEMBER_ACCESS_EXPRESSION:
         {

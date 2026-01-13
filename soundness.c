@@ -91,11 +91,10 @@ int check_literal_expression_soundness(struct literal_expression *e,
                         }
                         // TODO: check duplicate fields
                     }
-                    
                     return 1;
                 }
             }
-            return 0;
+            return 1;
         }
         case LITERAL_HOLE:
         case LITERAL_NULL:
@@ -129,14 +128,29 @@ int check_expression_soundness(struct expression *e,
 {
     switch (e->kind) {
         case UNARY_EXPRESSION:
-            return check_expression_soundness(e->unary.expression, global_context, scoped_variables, error);
+            return check_expression_soundness(e->unary.expression,
+                                              global_context,
+                                              scoped_variables,
+                                              error);
         case LITERAL_EXPRESSION:
-            return check_literal_expression_soundness(&e->literal, global_context, scoped_variables, error);
+            return check_literal_expression_soundness(&e->literal,
+                                                      global_context,
+                                                      scoped_variables,
+                                                      error);
         case GROUP_EXPRESSION:
-            return check_expression_soundness(e->grouped, global_context, scoped_variables, error);
+            return check_expression_soundness(e->grouped,
+                                              global_context,
+                                              scoped_variables,
+                                              error);
         case BINARY_EXPRESSION:
-            return check_binary_expression_soundness(&e->binary, global_context, scoped_variables, error);
+            return check_binary_expression_soundness(&e->binary,
+                                                     global_context,
+                                                     scoped_variables,
+                                                     error);
         case FUNCTION_EXPRESSION:
+        {
+            return 1;
+        }
         case VOID_EXPRESSION:
         case MEMBER_ACCESS_EXPRESSION:
             return 1;
@@ -372,6 +386,7 @@ int check_action_statement_soundness(struct statement *s,
     struct list_char error_message = list_create(char, 100);
     struct list_scoped_variable *scoped_variables =
         &lut_get(&context->statement_scope_lookup, s->id).scoped_variables;
+
     if (!check_expression_soundness(&s->expression,
                                     global_context,
                                     scoped_variables,

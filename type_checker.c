@@ -307,6 +307,7 @@ int type_check_function_expression(struct function_expression *fn,
         return 0;
     }
         
+    // TODO
     return 1;
     // for (size_t i = 0; i < fn_type.function_type.params.size; i++) {
     //     struct key_type_pair *param = &fn_type.function_type.params.data[i];
