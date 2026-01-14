@@ -1,5 +1,6 @@
 #include "type_inference.h"
 #include "ast.h"
+#include "utils.h"
 #include <assert.h>
 
 int get_scoped_variable_type(struct list_scoped_variable *scoped_variables,
@@ -28,7 +29,8 @@ int get_scoped_variable_type(struct list_scoped_variable *scoped_variables,
 
 int find_struct_definition(struct global_context *c,
                            struct list_char *struct_name,
-                           struct type *out)
+                           struct type *out,
+                           struct list_char *error)
 {
     for (size_t i = 0; i < c->data_types.size; i++) {
         struct type this = c->data_types.data[i];
@@ -42,12 +44,16 @@ int find_struct_definition(struct global_context *c,
         }
     }
     
-    UNREACHABLE("struct does not exist.");
+    append_list_char_slice(error, "struct `");
+    append_list_char_slice(error, struct_name->data);
+    append_list_char_slice(error, "` does not exist.");
+    return 0;
 }
 
 int find_enum_definition(struct global_context *c,
-                           struct list_char *enum_name,
-                           struct type *out)
+                         struct list_char *enum_name,
+                         struct type *out,
+                         struct list_char *error)
 {
     for (size_t i = 0; i < c->data_types.size; i++) {
         struct type this = c->data_types.data[i];
@@ -61,22 +67,26 @@ int find_enum_definition(struct global_context *c,
         }
     }
     
-    UNREACHABLE("enum does not exist.");
+    append_list_char_slice(error, "enum `");
+    append_list_char_slice(error, enum_name->data);
+    append_list_char_slice(error, "` does not exist.");
+    return 0;
 }
 
 int get_field_type(struct list_key_type_pair *pairs,
                    struct list_char *field_name,
                    struct global_context *global_context,
-                   struct type *out)
+                   struct type *out,
+                   struct list_char *error)
 {
     for (size_t i = 0; i < pairs->size; i++) {
         if (list_char_eq(field_name, &pairs->data[i].field_name)) {
             struct type *found = pairs->data[i].field_type;
 
             if (found->kind == TY_STRUCT && found->struct_type.predefined) {
-                find_struct_definition(global_context, found->name, found);
+                if (!find_struct_definition(global_context, found->name, found, error)) return 0;
             } else if (found->kind == TY_ENUM && found->enum_type.predefined) {
-                find_enum_definition(global_context, found->name, found);
+                if (!find_enum_definition(global_context, found->name, found, error)) return 0;
             }
             
             *out = *found;
@@ -95,9 +105,9 @@ int infer_literal_expression_type(struct literal_expression *e,
 {
     switch (e->kind) {
         case LITERAL_STRUCT:
-            return find_struct_definition(global_context, e->struct_enum.name, out);
+            return find_struct_definition(global_context, e->struct_enum.name, out, error);
         case LITERAL_ENUM:
-            return find_enum_definition(global_context, e->struct_enum.name, out);
+            return find_enum_definition(global_context, e->struct_enum.name, out, error);
         case LITERAL_NAME:
         {
             for (size_t i = 0; i < scoped_variables->size; i++) {
@@ -105,7 +115,7 @@ int infer_literal_expression_type(struct literal_expression *e,
                     struct type *t = &scoped_variables->data[i].type;
                     // TODO: enums
                     if (t->kind == TY_STRUCT) {
-                        find_struct_definition(global_context, t->name, t);
+                        if (!find_struct_definition(global_context, t->name, t, error)) return 0;
                     }
                     *out = *t;
                     return 1;
@@ -195,7 +205,10 @@ int infer_function_type(struct type *matched_fn,
     
     if (matched_fn->function_type.params.size == value_count) {
         if (matched_fn->function_type.return_type->kind == TY_STRUCT) {
-            return find_struct_definition(global_context, matched_fn->function_type.return_type->name, out);
+            return find_struct_definition(global_context,
+                                          matched_fn->function_type.return_type->name,
+                                          out,
+                                          error_message);
         }
 
         *out = *matched_fn->function_type.return_type;
@@ -292,7 +305,8 @@ int infer_expression_type(struct expression *e,
             if (!get_field_type(&accessed.struct_type.pairs,
                                 e->member_access.member_name,
                                 global_context,
-                                out))
+                                out,
+                                error))
             {
                 append_list_char_slice(error, "field `");
                 append_list_char_slice(error, e->member_access.member_name->data);
@@ -317,11 +331,12 @@ int infer_expression_type(struct expression *e,
     UNREACHABLE("infer_expression_type: fell out of switch case.");
 }
 
-struct type infer_full_type(struct type *incomplete_type,
-                            struct global_context *global_context,
-                            struct list_scoped_variable *scoped_variables)
+int infer_full_type(struct type *incomplete_type,
+                    struct global_context *global_context,
+                    struct list_scoped_variable *scoped_variables,
+                    struct type *out,
+                    struct list_char *error)
 {
-    struct type output = {0};
     switch (incomplete_type->kind) {
         case TY_FUNCTION:
         {
@@ -329,20 +344,18 @@ struct type infer_full_type(struct type *incomplete_type,
         }
         case TY_STRUCT:
         {
-            find_struct_definition(global_context, incomplete_type->name, &output);
-            break;
+            return find_struct_definition(global_context, incomplete_type->name, out, error);
         }
         case TY_ENUM:
         {
-            find_enum_definition(global_context, incomplete_type->name, &output);
-            break;
+            return find_enum_definition(global_context, incomplete_type->name, out, error);
         }
         case TY_PRIMITIVE:
         {
-            output = *incomplete_type;
-            break;
+            *out = *incomplete_type;
+            return 1;
         }
     }
-
-    return output;
+    
+    UNREACHABLE("dropped out of type switch within infer_full_type");
 }

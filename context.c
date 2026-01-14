@@ -108,11 +108,19 @@ int contextualise_statement(struct statement *s,
                     struct list_scoped_variable fn_scoped_variables = copy_scoped_variables(scoped_variables);
                     struct function_type fn = s->type_declaration.type.function_type;
                     for (size_t i = 0; i < fn.params.size; i++) {
+                        struct type full_type = {0};
+                        if (!infer_full_type(fn.params.data[i].field_type,
+                                            global_context,
+                                            scoped_variables,
+                                            &full_type,
+                                            &error_message))
+                        {
+                            return 0;
+                        }
+
                         struct scoped_variable param = (struct scoped_variable) {
                             .name = fn.params.data[i].field_name,
-                            .type = infer_full_type(fn.params.data[i].field_type,
-                                                    global_context,
-                                                    scoped_variables)
+                            .type = full_type
                         };
                         list_append(&fn_scoped_variables, param);
                     }

@@ -11,8 +11,10 @@ int infer_expression_type(struct expression *e,
                           struct type *out,
                           struct list_char *error);
 
-struct type infer_full_type(struct type *incomplete_type,
+int infer_full_type(struct type *incomplete_type,
                             struct global_context *global_context,
-                            struct list_scoped_variable *scoped_variables);
+                            struct list_scoped_variable *scoped_variables,
+                            struct type *out,
+                            struct list_char *error);
 
 #endif
