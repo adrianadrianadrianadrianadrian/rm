@@ -8,6 +8,11 @@
 
 int compile(char *file_name, struct error *error) {
     FILE *f = fopen(file_name, "r");
+    if (f == NULL) {
+        write_raw_error(stderr, "input file not found.");
+        return 0;
+    }
+
     struct token_buffer tb = create_token_buffer(f, file_name);
     struct parsed_file parsed = {0};
     struct context c = {0};

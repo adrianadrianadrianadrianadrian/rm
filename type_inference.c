@@ -136,7 +136,10 @@ int infer_literal_expression_type(struct literal_expression *e,
                 }
             }
 
-            UNREACHABLE("cannot find literal name.");
+            append_list_char_slice(error, "cannot find literal name `");
+            append_list_char_slice(error, e->name->data);
+            append_list_char_slice(error, "`.");
+            return 0;
         }
         case LITERAL_BOOLEAN:
         {
@@ -234,31 +237,105 @@ int infer_function_type(struct type *matched_fn,
 
 int infer_expression_type(struct expression *e,
                           struct global_context *global_context,
+                          struct context *context,
                           struct list_scoped_variable *scoped_variables,
                           struct type *out,
                           struct list_char *error)
 {
     switch (e->kind) {
         case LITERAL_EXPRESSION:
-            return infer_literal_expression_type(&e->literal, global_context, scoped_variables, out, error);
+        {
+            if (!infer_literal_expression_type(&e->literal,
+                                               global_context,
+                                               scoped_variables,
+                                               out,
+                                               error))
+            {
+                return 0;
+            }
+            lut_add(&context->expression_type_lookup, e->id, *out);
+            return 1;
+        }
         case UNARY_EXPRESSION:
-            return infer_expression_type(e->unary.expression, global_context, scoped_variables, out, error);
+        {
+            if (!infer_expression_type(e->unary.expression,
+                                       global_context,
+                                       context,
+                                       scoped_variables,
+                                       out,
+                                       error))
+            {
+                return 0;
+            }
+            lut_add(&context->expression_type_lookup, e->id, *out);
+            return 1;
+        }
         case BINARY_EXPRESSION:
         {
             struct type left = {0};
+            if (!infer_expression_type(e->binary.l,
+                                       global_context,
+                                       context,
+                                       scoped_variables,
+                                       &left,
+                                       error))
+            {
+                return 0;
+            }
+
             struct type right = {0};
-            if (!infer_expression_type(e->binary.l, global_context, scoped_variables, &left, error)) return 0;
-            if (!infer_expression_type(e->binary.r, global_context, scoped_variables, &right, error)) return 0;
-            // TODO: expression type context on all levels instead of this, then check in type_checker.
-            // if (!type_eq(&left, &right)) {
-            //     append_list_char_slice(error, "binary expression branches must have the same type.");
-            //     return 0;
-            // }
-            *out = left;
+            if (!infer_expression_type(e->binary.r,
+                                       global_context,
+                                       context,
+                                       scoped_variables,
+                                       &right,
+                                       error))
+            {
+                return 0;
+            }
+            
+            // TODO
+            switch (e->binary.binary_op) {
+                case PLUS_BINARY:
+                case MINUS_BINARY:
+                case MULTIPLY_BINARY:
+                case ASSIGN_BINARY:
+                case BITWISE_OR_BINARY:
+                case BITWISE_AND_BINARY:
+                {
+                    TODO("binary ops");
+                    return 0;
+                }
+                case GREATER_THAN_BINARY:
+                case LESS_THAN_BINARY:
+                case EQUAL_TO_BINARY:
+                case OR_BINARY:
+                case AND_BINARY:
+                {
+                    *out = (struct type) {
+                        .kind = TY_PRIMITIVE,
+                        .primitive_type = BOOL
+                    };
+                    lut_add(&context->expression_type_lookup, e->id, *out);
+                    return 1;
+                }
+            }
             return 1;
         }
         case GROUP_EXPRESSION:
-            return infer_expression_type(e->grouped, global_context, scoped_variables, out, error);
+        {
+            if (!infer_expression_type(e->grouped,
+                                       global_context,
+                                       context,
+                                       scoped_variables,
+                                       out,
+                                       error))
+            {
+                return 0;
+            }
+            lut_add(&context->expression_type_lookup, e->id, *out);
+            return 1;
+        }
         case FUNCTION_EXPRESSION:
         {
             size_t value_count = e->function.params->size;
@@ -289,6 +366,7 @@ int infer_expression_type(struct expression *e,
             struct type accessed = {0};
             if (!infer_expression_type(e->member_access.accessed,
                                        global_context,
+                                       context,
                                        scoped_variables,
                                        &accessed,
                                        error))

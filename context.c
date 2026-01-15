@@ -63,6 +63,7 @@ int contextualise_statement(struct statement *s,
             struct type value_type = {0};
             if (!infer_expression_type(&s->binding_statement.value,
                                        global_context,
+                                       context,
                                        scoped_variables,
                                        &value_type,
                                        &error_message))
@@ -76,7 +77,6 @@ int contextualise_statement(struct statement *s,
                 .scoped_variables = copy_scoped_variables(scoped_variables)
             };
             lut_add(&context->statement_scope_lookup, s->id, scope);
-            lut_add(&context->expression_type_lookup, s->binding_statement.value.id, value_type);
             return 1;
         }
         case RETURN_STATEMENT:
@@ -84,6 +84,7 @@ int contextualise_statement(struct statement *s,
             struct type return_type = {0};
             if (!infer_expression_type(&s->expression,
                                        global_context,
+                                       context,
                                        scoped_variables,
                                        &return_type,
                                        &error_message))
@@ -97,7 +98,6 @@ int contextualise_statement(struct statement *s,
                 .scoped_variables = copy_scoped_variables(scoped_variables)
             };
             lut_add(&context->statement_scope_lookup, s->id, scope);
-            lut_add(&context->expression_type_lookup, s->expression.id, return_type);
             return 1;
         }
         case TYPE_DECLARATION_STATEMENT:
@@ -105,7 +105,8 @@ int contextualise_statement(struct statement *s,
             switch (s->type_declaration.type.kind) {
                 case TY_FUNCTION:
                 {
-                    struct list_scoped_variable fn_scoped_variables = copy_scoped_variables(scoped_variables);
+                    struct list_scoped_variable fn_scoped_variables =
+                        copy_scoped_variables(scoped_variables);
                     struct function_type fn = s->type_declaration.type.function_type;
                     for (size_t i = 0; i < fn.params.size; i++) {
                         struct type full_type = {0};
@@ -161,7 +162,8 @@ int contextualise_statement(struct statement *s,
         }
         case BLOCK_STATEMENT:
         {
-            struct list_scoped_variable block_scoped_variables = copy_scoped_variables(scoped_variables);
+            struct list_scoped_variable block_scoped_variables =
+                copy_scoped_variables(scoped_variables);
             for (size_t i = 0; i < s->statements->size; i++) {
                 struct statement *this = &s->statements->data[i];
                 if (!contextualise_statement(this,
@@ -195,7 +197,9 @@ int contextualise_statement(struct statement *s,
             struct statement_scope success_scope = {
                 .scoped_variables = copy_scoped_variables(scoped_variables)
             };
-            lut_add(&context->statement_scope_lookup, s->if_statement.success_statement->id, success_scope);
+            lut_add(&context->statement_scope_lookup,
+                    s->if_statement.success_statement->id,
+                    success_scope);
 
             if (s->if_statement.else_statement != NULL) {
                 if (!contextualise_statement(s->if_statement.else_statement,
@@ -215,6 +219,7 @@ int contextualise_statement(struct statement *s,
             struct type condition_type = {0};
             if (!infer_expression_type(&s->if_statement.condition,
                                        global_context,
+                                       context,
                                        scoped_variables,
                                        &condition_type,
                                        &error_message))
@@ -228,7 +233,6 @@ int contextualise_statement(struct statement *s,
                 .scoped_variables = copy_scoped_variables(scoped_variables)
             };
             lut_add(&context->statement_scope_lookup, s->id, scope);
-            lut_add(&context->expression_type_lookup, s->if_statement.condition.id, condition_type);
             return 1;
         }
         case ACTION_STATEMENT:
@@ -236,6 +240,7 @@ int contextualise_statement(struct statement *s,
             struct type action_type = {0};
             if (!infer_expression_type(&s->expression,
                                        global_context,
+                                       context,
                                        scoped_variables,
                                        &action_type,
                                        &error_message))
@@ -248,7 +253,6 @@ int contextualise_statement(struct statement *s,
                 .scoped_variables = copy_scoped_variables(scoped_variables)
             };
             lut_add(&context->statement_scope_lookup, s->id, scope);
-            lut_add(&context->expression_type_lookup, s->expression.id, action_type);
             return 1;
         }
         case WHILE_LOOP_STATEMENT:
@@ -264,11 +268,14 @@ int contextualise_statement(struct statement *s,
             struct statement_scope do_statement_scope = {
                 .scoped_variables = copy_scoped_variables(scoped_variables)
             };
-            lut_add(&context->statement_scope_lookup, s->while_loop_statement.do_statement->id, do_statement_scope);
+            lut_add(&context->statement_scope_lookup,
+                    s->while_loop_statement.do_statement->id,
+                    do_statement_scope);
 
             struct type condition_type = {0};
             if (!infer_expression_type(&s->while_loop_statement.condition,
                                        global_context,
+                                       context,
                                        scoped_variables,
                                        &condition_type,
                                        &error_message))
@@ -281,7 +288,6 @@ int contextualise_statement(struct statement *s,
                 .scoped_variables = copy_scoped_variables(scoped_variables)
             };
             lut_add(&context->statement_scope_lookup, s->id, while_scope);
-            lut_add(&context->expression_type_lookup, s->while_loop_statement.condition.id, condition_type);
             return 1;
         }
         case BREAK_STATEMENT:
