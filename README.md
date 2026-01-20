@@ -62,12 +62,12 @@ fn test(res: enum result) -> void {
     switch (res) {
         case { ok: p@{ age: 21 }}:
         {
-            printf("Height of 21 year old is %d\n", p.height);
+            `printf("Height of 21 year old is %d\n", p.height);`
             break;
         }
         case { error: err }:
         {
-            printf("Error!!!! %d\n", err);
+            `printf("Error!!!! %d\n", err);`
             break;
         }
     }
