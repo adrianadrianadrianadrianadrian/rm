@@ -16,6 +16,6 @@ gcc -g -o compiler \
 
 mkdir -p target
 ./compiler "$1"
-# rm compiler
-# cd target
-# gcc -o bin c_output.c
+rm compiler
+cd target
+gcc -o bin c_output.c

@@ -308,9 +308,12 @@ int infer_expression_type(struct expression *e,
             
             // TODO
             switch (e->binary.binary_op) {
+                case MULTIPLY_BINARY:
+                {
+                    return 1;
+                }
                 case PLUS_BINARY:
                 case MINUS_BINARY:
-                case MULTIPLY_BINARY:
                 case ASSIGN_BINARY:
                 case BITWISE_OR_BINARY:
                 case BITWISE_AND_BINARY:

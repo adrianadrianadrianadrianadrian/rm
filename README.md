@@ -2,7 +2,6 @@ This is just me learning about language/compiler design by doing. Goal of this w
 
 oh, and I'm letting it leak memory everywhere for now.
 
-So far this compiles via compiler.sh:
 ```
 struct person {
     age: i32,
