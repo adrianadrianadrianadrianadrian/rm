@@ -5,6 +5,7 @@
 #include "context.h"
 #include "soundness.h"
 #include "type_checker.h"
+#include "lowering/c.h"
 
 int compile(char *file_name, struct error *error) {
     FILE *f = fopen(file_name, "r");
@@ -21,7 +22,8 @@ int compile(char *file_name, struct error *error) {
     if (!contextualise(&parsed, &c, error))   return 0;
     if (!soundness_check(&parsed, &c, error)) return 0;
     if (!type_check(&parsed, &c, error))      return 0;
-
+    
+    generate_c(&parsed, &c);
     return 1;
 }
 

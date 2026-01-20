@@ -10,6 +10,7 @@ gcc -g -o compiler \
     soundness.c \
     type_checker.c \
     type_inference.c \
+    lowering/c.c \
     -lm \
     -D DEBUG_CONTEXT
 

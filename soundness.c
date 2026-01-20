@@ -196,31 +196,43 @@ int check_struct_soundness(struct type *type,
         struct type *ty = pairs.data[i].field_type;
         for (size_t m = 0; m < ty->modifiers.size; m++) {
             struct type_modifier *modifier = &ty->modifiers.data[m];
-            if (modifier->kind == ARRAY_MODIFIER_KIND
-                && modifier->array_modifier.reference_sized)
+            if (modifier->kind == ARRAY_MODIFIER_KIND)
             {
-                struct list_char *ref_name = modifier->array_modifier.reference_name;
-                int found = 0;
-                for (size_t p = 0; p < pairs.size; p++) {
-                    if (list_char_eq(&pairs.data[p].field_name, modifier->array_modifier.reference_name)) {
-                        struct type *found_type = pairs.data[p].field_type;
-                        if (found_type->kind == TY_PRIMITIVE && found_type->primitive_type == USIZE) {
-                            found = 1;
-                        } else {
-                            append_list_char_slice(error, "`");
-                            append_list_char_slice(error, ref_name->data);
-                            append_list_char_slice(error, "` must be bound to a field of type `usize`");
-                            return 0;
+                if (modifier->array_modifier.reference_sized) {
+                    // It's sized, so let's check the size is bound within the struct.
+                    struct list_char *ref_name = modifier->array_modifier.reference_name;
+                    int found = 0;
+                    for (size_t p = 0; p < pairs.size; p++) {
+                        if (list_char_eq(&pairs.data[p].field_name, modifier->array_modifier.reference_name)) {
+                            struct type *found_type = pairs.data[p].field_type;
+                            if (found_type->kind == TY_PRIMITIVE && found_type->primitive_type == USIZE) {
+                                found = 1;
+                            } else {
+                                append_list_char_slice(error, "`");
+                                append_list_char_slice(error, ref_name->data);
+                                append_list_char_slice(error, "` must be bound to a field of type `usize`");
+                                return 0;
+                            }
                         }
                     }
-                }
-                
-                if (!found) {
+                    
+                    if (!found) {
+                        append_list_char_slice(error, "`");
+                        append_list_char_slice(error, ref_name->data);
+                        append_list_char_slice(error, "` is unbounded within `");
+                        append_list_char_slice(error, type->name->data);
+                        append_list_char_slice(error, "`");
+                        return 0;
+                    }
+                } else {
+                    // It's not sized, let's ensure it's a pointer.
+                    if (m >= 1 && ty->modifiers.data[m - 1].kind == POINTER_MODIFIER_KIND) {
+                        continue;
+                    }
+
                     append_list_char_slice(error, "`");
-                    append_list_char_slice(error, ref_name->data);
-                    append_list_char_slice(error, "` is unbounded within `");
-                    append_list_char_slice(error, type->name->data);
-                    append_list_char_slice(error, "`");
+                    append_list_char_slice(error, pairs.data[i].field_name.data);
+                    append_list_char_slice(error, "` must have a pointer modifier");
                     return 0;
                 }
             }
@@ -522,6 +534,8 @@ int soundness_check(struct parsed_file *parsed_file,
                     }
                     case TY_PRIMITIVE:
                         UNREACHABLE("TY_PRIMITIVE shouldn't have made it here via parsing.");
+                    case TY_ANY:
+                        UNREACHABLE("TY_ANY shouldn't have made it here via parsing.");
                 }
                 break;
             }

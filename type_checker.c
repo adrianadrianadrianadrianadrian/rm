@@ -34,7 +34,7 @@ struct list_char type_mismatch_generic_error(struct type *expected, struct type 
     append_list_char_slice(&output, show_type(expected).data);
     append_list_char_slice(&output, "` but got `");
     append_list_char_slice(&output, show_type(actual).data);
-    append_list_char_slice(&output, "`.");
+    append_list_char_slice(&output, "`");
     return output;
 }
 
@@ -81,36 +81,77 @@ int type_modifier_eq(struct type_modifier *l, struct type_modifier *r)
     UNREACHABLE("type_modifier_eq fell out of switch.");
 }
 
-int type_eq(struct type *l, struct type *r) {
+struct list_type_modifier pop(struct list_type_modifier *modifiers)
+{
+    assert(modifiers->size > 0);
+    struct list_type_modifier output = list_create(type_modifier, modifiers->size - 1);
+    for (size_t i = 0; i < output.size; i++) {
+        list_append(&output, modifiers->data[i + 1]);
+    }
+    return output;
+}
+
+int type_eq(struct type *l, struct type *r)
+{
     assert(l);
     assert(r);
     assert(l->kind);
     assert(r->kind);
 
-    if (l->kind != r->kind) {
-        return 0;
+    if (r->modifiers.size > l->modifiers.size) {
+        return type_eq(r, l);
     }
     
-    if (l->modifiers.size != r->modifiers.size) {
-        return 0;
-    }
-    
-    for (size_t i = 0; i < l->modifiers.size; i++) {
-        if (!type_modifier_eq(&l->modifiers.data[i], &r->modifiers.data[i])) return 0;
-    }
-    
-    switch (l->kind) {
-        case TY_PRIMITIVE:
-            return l->primitive_type == r->primitive_type;
-        case TY_STRUCT:
-            return list_char_eq(l->name, r->name);
-        case TY_FUNCTION:
-            return fn_type_eq(&l->function_type, &r->function_type);
-        case TY_ENUM:
-            return list_char_eq(l->name, r->name);
-    }
+    switch (l->modifiers.size) {
+        case 0:
+        {
+            if (r->kind == TY_ANY) {
+                return 1;
+            }
 
-    return 0;
+            switch (l->kind) {
+                case TY_PRIMITIVE:
+                    return l->primitive_type == r->primitive_type;
+                case TY_STRUCT:
+                    return list_char_eq(l->name, r->name);
+                case TY_FUNCTION:
+                    return fn_type_eq(&l->function_type, &r->function_type);
+                case TY_ENUM:
+                    return list_char_eq(l->name, r->name);
+                case TY_ANY:
+                    return 1;
+            }
+            break;
+        }
+        default:
+        {
+            struct list_type_modifier l_popped = pop(&l->modifiers);
+            struct type *l_updated = malloc(sizeof(*l_updated));
+            *l_updated = *l;
+            l_updated->modifiers = l_popped;
+            
+            if (r->modifiers.size > 0) {
+                if (!type_modifier_eq(&l->modifiers.data[0], &r->modifiers.data[0])) return 0;
+                struct list_type_modifier r_popped = pop(&r->modifiers);
+                struct type *r_updated = malloc(sizeof(*r_updated));
+                *r_updated = *r;
+                r_updated->modifiers = r_popped;
+                return type_eq(l_updated, r_updated);
+            }
+
+            if (l->modifiers.data[0].kind == NULLABLE_MODIFIER_KIND
+                && r->modifiers.size == 0)
+            {
+                if (l->kind != TY_ANY && r->kind != TY_ANY) {
+                    return type_eq(l_updated, r);
+                }
+            }
+
+            return 0;
+        }
+    }
+    
+    UNREACHABLE("type_eq_new");
 }
 
 int is_boolean(struct type *ty)
@@ -147,14 +188,13 @@ int binding_statement_check(struct statement *s,
     {
         struct type actual_type =
             lut_get(&context->expression_type_lookup, s->binding_statement.value.id);
-        // TODO: need to make sure we get the full type for non primitive annotations
         if (!type_eq(&s->binding_statement.variable_type, &actual_type)) {
             add_error_inner(&metadata,
                             type_mismatch_generic_error(&s->binding_statement.variable_type, 
                                                         &actual_type).data,
                             error);
+            return 0;
         }
-        return 0;
     }
     
     return 1;
@@ -590,6 +630,11 @@ struct list_char show_type(struct type *ty) {
             append_list_char_slice(&output, ") -> ");
             struct list_char return_type = show_type(ty->function_type.return_type);
             append_list_char_slice(&output, return_type.data);
+            break;
+        }
+        case TY_ANY:
+        {
+            append_list_char_slice(&output, "_");
             break;
         }
     }

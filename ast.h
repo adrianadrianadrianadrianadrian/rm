@@ -47,7 +47,8 @@ enum type_kind {
     TY_PRIMITIVE = 1,
     TY_STRUCT,
     TY_FUNCTION,
-    TY_ENUM
+    TY_ENUM,
+    TY_ANY
 };
 
 typedef struct key_type_pair {

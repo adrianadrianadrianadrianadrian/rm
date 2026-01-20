@@ -4,9 +4,6 @@ oh, and I'm letting it leak memory everywhere for now.
 
 So far this compiles via compiler.sh:
 ```
-#include <stdio.h>
-#include <stdlib.h>
-
 struct person {
     age: i32,
     height: i32,
@@ -37,9 +34,9 @@ fn main() -> i32 {
     let client = struct api_client { port = 8080 };
 
     if (loop_count > 10) {
-        printf("%d > 10\n", loop_count);
+        `printf("%d > 10\n", loop_count);`
     } else {
-        printf("%d <= 10\n", loop_count);
+        `printf("%d <= 10\n", loop_count);`
     }
 
     return 0;
@@ -75,19 +72,5 @@ fn test(res: enum result) -> void {
             break;
         }
     }
-}
-```
-
-Currently for IO, as you can see, I'm directly including C headers and running functions such as `printf`. This is just a hack to see something happen. I think long term I'm leaning toward having a special struct that's provided by the compiler, called `io`, that'll have the ability to essentially run syscalls on the respective platform. Then any function that wishes to do IO will need to take this struct as a param. The value of this will come from the main function only. Though, there'll be a way to create it out of thin air for dev purposes in non release builds.
-
-e.g.
-```
-fn main(io: struct io, ..) -> i32 {
-    print(io, "Hello, world!\n");
-    return 0;
-}
-
-fn print(io: struct io, message: []u8) {
-    ...
 }
 ```

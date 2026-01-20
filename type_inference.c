@@ -184,8 +184,20 @@ int infer_literal_expression_type(struct literal_expression *e,
             };
             return 1;
         }
-        case LITERAL_HOLE:
         case LITERAL_NULL:
+        {
+            struct list_type_modifier modifiers = list_create(type_modifier, 1);
+            struct type_modifier array = (struct type_modifier) {
+                .kind = NULLABLE_MODIFIER_KIND
+            };
+            list_append(&modifiers, array);
+            *out = (struct type) {
+                .kind = TY_ANY,
+                .modifiers = modifiers
+            };
+            return 1;
+        }
+        case LITERAL_HOLE:
             return 1;
     }
 
@@ -428,6 +440,7 @@ int infer_full_type(struct type *incomplete_type,
         {
             return find_enum_definition(global_context, incomplete_type->name, out, error);
         }
+        case TY_ANY:
         case TY_PRIMITIVE:
         {
             *out = *incomplete_type;

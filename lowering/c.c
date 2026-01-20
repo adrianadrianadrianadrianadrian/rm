@@ -1,4 +1,4 @@
-#include "../ast.h"
+#include "../parser.h"
 #include "../context.h"
 #include <assert.h>
 #include "c.h"
@@ -484,14 +484,14 @@ void write_expression(struct expression *e,
     }
 }
 
-void write_statement(struct statement_context *s, FILE *file);
+void write_statement(struct statement *s, FILE *file);
 
 void write_type_default(struct type *type, FILE *file) {
     // TODO: derive default C values 
     fprintf(file, "0");
 }
 
-void write_binding_statement(struct statement_context *c, FILE *file) {
+void write_binding_statement(struct statement *c, FILE *file) {
     // assert(c->kind == BINDING_STATEMENT);
     // struct binding_statement_context *s = &c->binding_statement;
     // if (s->binding_statement->has_type) {
@@ -511,20 +511,20 @@ void write_binding_statement(struct statement_context *c, FILE *file) {
     fprintf(file, ";");
 }
 
-void write_if_statement(struct statement_context *c, FILE *file) {
-    assert(c->kind == IF_STATEMENT);
-    struct if_statement_context *s = &c->if_statement_context;
-    fprintf(file, "if (");
-    //write_expression(s->condition.e, c->global_context, &c->scoped_variables, file);
-    fprintf(file, ")");
-    write_statement(s->success_statement, file);
-    if (s->else_statement != NULL) {
-        fprintf(file, " else ");
-        write_statement(s->else_statement, file);
-    }
+void write_if_statement(struct statement *c, FILE *file) {
+    // assert(c->kind == IF_STATEMENT);
+    // struct if_statement_context *s = &c->if_statement_context;
+    // fprintf(file, "if (");
+    // //write_expression(s->condition.e, c->global_context, &c->scoped_variables, file);
+    // fprintf(file, ")");
+    // write_statement(s->success_statement, file);
+    // if (s->else_statement != NULL) {
+    //     fprintf(file, " else ");
+    //     write_statement(s->else_statement, file);
+    // }
 }
 
-void write_return_statement(struct statement_context *c, FILE *file) {
+void write_return_statement(struct statement *c, FILE *file) {
     assert(c->kind == RETURN_STATEMENT);
     //struct return_statement_context *s = &c->return_statement;
     fprintf(file, "return ");
@@ -534,7 +534,7 @@ void write_return_statement(struct statement_context *c, FILE *file) {
 
 struct_list(int);
 
-void write_block_statement(struct list_statement_context *statements, FILE *file) {
+void write_block_statement(struct list_statement *statements, FILE *file) {
     fprintf(file, "{");
     for (size_t i = 0; i < statements->size; i++) {
         write_statement(&statements->data[i], file);
@@ -542,23 +542,23 @@ void write_block_statement(struct list_statement_context *statements, FILE *file
     fprintf(file, "}");
 }
 
-void write_action_statement(struct statement_context *c, FILE *file) {
+void write_action_statement(struct statement *c, FILE *file) {
     assert(c->kind == ACTION_STATEMENT);
     // struct action_statement_context *s = &c->action_statement_context;
     // write_expression(s->e.e, c->global_context, &c->scoped_variables, file);
     fprintf(file, ";");
 }
 
-void write_while_statement(struct statement_context *c, FILE *file) {
-    assert(c->kind == WHILE_LOOP_STATEMENT);
-    struct while_loop_statement_context *s = &c->while_loop_statement;
-    fprintf(file, "while (");
-    //write_expression(s->condition.e, c->global_context, &c->scoped_variables, file);
-    fprintf(file, ")");
-    write_statement(s->do_statement, file);
+void write_while_statement(struct statement *c, FILE *file) {
+    // assert(c->kind == WHILE_LOOP_STATEMENT);
+    // struct while_loop_statement_context *s = &c->while_loop_statement;
+    // fprintf(file, "while (");
+    // //write_expression(s->condition.e, c->global_context, &c->scoped_variables, file);
+    // fprintf(file, ")");
+    // write_statement(s->do_statement, file);
 }
 
-void write_type_declaration_statement(struct type_declaration_statement_context *s,
+void write_type_declaration_statement(struct type_declaration_statement *s,
                                       FILE *file)
 {
     write_type(&s->type, file);
@@ -653,7 +653,7 @@ void write_c_block(struct c_block_statement *s, FILE *file) {
     fprintf(file, "%s\n", s->raw_c->data);
 }
 
-void write_statement(struct statement_context *s, FILE *file) {
+void write_statement(struct statement *s, FILE *file) {
     switch (s->kind) {
         case BINDING_STATEMENT:
             write_binding_statement(s, file);
@@ -665,7 +665,7 @@ void write_statement(struct statement_context *s, FILE *file) {
             write_return_statement(s, file);
             break;
         case BLOCK_STATEMENT:
-            write_block_statement(s->block_statements, file);
+            write_block_statement(s->statements, file);
             break;
         case ACTION_STATEMENT:
             write_action_statement(s, file);
@@ -695,12 +695,13 @@ struct generated_c_state {
     struct list_type *fn_types;
 };
 
-static void generate_c_file(struct rm_program *file) {
+static void generate_c_file(struct parsed_file *file, struct context *context)
+{
     FILE *output_file = fopen("target/c_output.c", "w");
     fprintf(output_file, "#include \"c_output.h\"\n");
 
     for (size_t i = 0; i < file->statements.size; i++) {
-        struct statement_context s = file->statements.data[i];
+        struct statement s = file->statements.data[i];
 
 		switch (s.kind) {
 			case TYPE_DECLARATION_STATEMENT:
@@ -716,6 +717,7 @@ static void generate_c_file(struct rm_program *file) {
 					}
 					case TY_ENUM:
 					case TY_STRUCT:
+					case TY_ANY:
 						break;
 				}
 				break;
@@ -737,8 +739,8 @@ static void generate_c_file(struct rm_program *file) {
     }
 }
 
-void generate_c_header(struct rm_program *program) {
-    struct global_context *global_context = &program->global_context;
+void generate_c_header(struct parsed_file *parsed_file) {
+    struct global_context *global_context = &parsed_file->global_context;
     FILE *header = fopen("target/c_output.h", "w");
     fprintf(header, "#ifndef C_OUTPUT_H\n#define C_OUTPUT_H\n");
     fprintf(header, "#include <stdio.h>\n");
@@ -764,7 +766,9 @@ void generate_c_header(struct rm_program *program) {
     fprintf(header, "\n#endif");
 }
 
-void generate_c(struct rm_program *program) {
-    generate_c_header(program);
-    generate_c_file(program);
+void generate_c(struct parsed_file *parsed_file,
+                struct context *context)
+{
+    generate_c_header(parsed_file);
+    generate_c_file(parsed_file, context);
 }
