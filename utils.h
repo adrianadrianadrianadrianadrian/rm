@@ -26,13 +26,11 @@
     do {                                                    \
         if ((l)->size + 1 > (l)->capacity) {                \
             size_t item_size = sizeof(*(l)->data);          \
-            size_t new_capacity =                           \
-                2 * (l)->capacity * item_size;              \
-            void *data = malloc(new_capacity);              \
+            (l)->capacity *= 2;                             \
+            void *data = malloc(item_size * (l)->capacity); \
             memcpy(data, (l)->data, (l)->size * item_size); \
             free((l)->data);                                \
             (l)->data = data;                               \
-            (l)->capacity = new_capacity;                   \
         }                                                   \
         (l)->data[(l)->size] = item;                        \
         (l)->size += 1;                                     \
