@@ -55,8 +55,8 @@
     do {                                                        \
         if ((i) + 1 > (l)->capacity) {                          \
             size_t item_size = sizeof(*(l)->data);              \
-            size_t new_capacity = 2*(i)*item_size;              \
-            void *data = malloc(new_capacity);                  \
+            size_t new_capacity = 2*(i);                        \
+            void *data = malloc(new_capacity * item_size);      \
             memcpy(data, (l)->data, (l)->capacity * item_size); \
             free((l)->data);                                    \
             (l)->data = data;                                   \
@@ -67,13 +67,17 @@
 
 #define lut_get(l, i) (l)->data[i]
 
-#define TODO(msg) \
-    fprintf(stderr, "%s:%d: todo: `%s`\n", __FILE__, __LINE__, msg); \
-    exit(1);
+#define TODO(msg)                                                        \
+    do {                                                                 \
+        fprintf(stderr, "%s:%d: todo: `%s`\n", __FILE__, __LINE__, msg); \
+        exit(1);                                                         \
+    } while (0)
 
-#define UNREACHABLE(msg) \
-    fprintf(stderr, "%s:%d: unreachable: `%s`\n", __FILE__, __LINE__, msg); \
-    exit(1);
+#define UNREACHABLE(msg)                                                        \
+    do {                                                                        \
+        fprintf(stderr, "%s:%d: unreachable: `%s`\n", __FILE__, __LINE__, msg); \
+        exit(1);                                                                \
+    } while (0)
 
 struct_list(char);
 

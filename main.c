@@ -22,7 +22,7 @@ int compile(char *file_name, struct error *error) {
     if (!contextualise(&parsed, &c, error))   return 0;
     if (!soundness_check(&parsed, &c, error)) return 0;
     if (!type_check(&parsed, &c, error))      return 0;
-    
+
     generate_c(&parsed, &c);
     return 1;
 }
@@ -39,7 +39,7 @@ int main(int argc, char **argv) {
         write_error(stderr, &error);
         return 1;
     }
-    
+
     printf("Compilation successful!\n");
     return 0;
 }

@@ -32,7 +32,7 @@ int try_parse(struct parser_state *s,
         seek_back_token(s->buffer, s->buffer->current_position - start);
         return 0;
     }
-    
+
     return 1;
 }
 
@@ -547,7 +547,7 @@ int parse_struct_enum_literal_expression(struct parser_state *s,
         list_append(&pairs, pair);
         should_continue = get_token_type(s->buffer, &tmp, COMMA);
     }
-    
+
     if (!get_token_type(s->buffer, &tmp, CLOSE_CURLY_PAREN)) return 0;
 
     *out = (struct literal_expression) {
@@ -785,7 +785,7 @@ int parse_member_access_expression(struct parser_state *s,
             .grouped = g
         };
     }
-    
+
     if (succeeded) {
         *out = *l;
     }
@@ -882,7 +882,7 @@ int parse_number_pattern(struct parser_state *s,
             .number = tmp.numeric
         }
     };
-    
+
     return 1;
 }
 
@@ -897,7 +897,7 @@ int parse_rest_pattern(struct parser_state *s,
     *out = (struct switch_pattern) {
         .switch_pattern_kind = REST_PATTERN_KIND
     };
-    
+
     return 1;
 }
 
@@ -1065,7 +1065,7 @@ int parse_binding_statement(struct parser_state *s,
     struct expression expression = {0};
     struct list_char variable_name = {0};
     int has_type = 0;
-    
+
     if (!get_token_type(s->buffer, &tmp, LET_KEYWORD)) return 0;
     if (!get_token_type(s->buffer, &tmp, IDENTIFIER)) {
         add_error_inner(s->buffer, error, "a let binding must have a name.");
@@ -1147,7 +1147,7 @@ int parse_block_statement(struct parser_state *s,
             break;
         }
     }
-    
+
     *out = (struct statement) {
         .kind = BLOCK_STATEMENT,
         .id = s->next_statement_id++,
@@ -1217,7 +1217,7 @@ int parse_action_statement(struct parser_state *s, struct statement *out, struct
         add_error_inner(s->buffer, error, "an action statement must end with a semicolon.");
         return 0;
     }
-    
+
     *out = (struct statement) {
         .kind = ACTION_STATEMENT,
         .id = s->next_statement_id++,
@@ -1271,7 +1271,7 @@ int parse_type_declaration(struct parser_state *s,
 {
     struct statement_metadata metadata = get_statement_metadata(s->buffer);
     struct type type = {0};
-    
+
     if (!parse_type(s, &type, 1, 0, error)) return 0;
     if (type.kind != TY_FUNCTION) {
         *out = (struct statement) {
@@ -1320,7 +1320,7 @@ int parse_case_statement(struct parser_state *s,
         .pattern = pattern,
         .statement = statement
     };
-    
+
     return 1;
 }
 
@@ -1431,7 +1431,7 @@ int parse_file(struct token_buffer *s,
     struct list_type fn_types = list_create(type, 100);
     struct list_type data_types = list_create(type, 100);
     struct lut_statement_metadata metadata_lookup = lut_create(statement_metadata, 100);
-    
+
     struct parser_state state = {
         .buffer = s,
         .next_expression_id = 0,
