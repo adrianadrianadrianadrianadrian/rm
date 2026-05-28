@@ -6,6 +6,21 @@
 #include "soundness.h"
 #include "type_checker.h"
 #include "lowering/c.h"
+#include <sys/time.h>
+#include <unistd.h>
+
+struct timeval current_time()
+{
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    return t;
+}
+
+double ms_delta(const struct timeval *t1, const struct timeval *t2)
+{
+    return (t2->tv_sec - t1->tv_sec) * 1000.0 +
+           (t2->tv_usec - t1->tv_usec) / 1000.0;
+}
 
 int compile(char *file_name, struct error *error)
 {
@@ -19,12 +34,25 @@ int compile(char *file_name, struct error *error)
     struct parsed_file parsed = {0};
     struct context c = {0};
 
+    struct timeval start = current_time();
     if (!parse_file(&tb, &parsed, error))     return 0;
+    struct timeval parse_end = current_time();
     if (!contextualise(&parsed, &c, error))   return 0;
+    struct timeval context_end = current_time();
     if (!soundness_check(&parsed, &c, error)) return 0;
+    struct timeval soundness_end = current_time();
     if (!type_check(&parsed, &c, error))      return 0;
-
+    struct timeval type_check_end = current_time();
     generate_c(&parsed, &c);
+    struct timeval codegen_end = current_time();
+
+    printf("parsed        %lfms\n", ms_delta(&start, &parse_end));
+    printf("context       %lfms\n", ms_delta(&parse_end, &context_end));
+    printf("soundess      %lfms\n", ms_delta(&context_end, &soundness_end));
+    printf("type_checked  %lfms\n", ms_delta(&soundness_end, &type_check_end));
+    printf("codegen       %lfms\n", ms_delta(&type_check_end, &codegen_end));
+    printf("total         %lfms\n", ms_delta(&start, &codegen_end));
+
     return 1;
 }
 
@@ -42,6 +70,5 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    printf("Compilation successful!\n");
     return 0;
 }
