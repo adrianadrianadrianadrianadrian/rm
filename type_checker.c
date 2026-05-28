@@ -42,11 +42,11 @@ int fn_type_eq(struct function_type *l, struct function_type *r) {
     if (l->params.size != r->params.size) {
         return 0;
     }
-    
+
     if (!type_eq(l->return_type, r->return_type)) {
         return 0;
     }
-        
+
     assert(l->params.size == r->params.size);
     for (size_t i = 0; i < l->params.size; i++) {
         if (!type_eq(l->params.data[i].field_type, r->params.data[i].field_type)) return 0;
@@ -60,7 +60,7 @@ int type_modifier_eq(struct type_modifier *l, struct type_modifier *r)
     if (l->kind != r->kind) {
         return 0;
     }
-    
+
     switch (l->kind) {
         case ARRAY_MODIFIER_KIND:
         {
@@ -77,7 +77,7 @@ int type_modifier_eq(struct type_modifier *l, struct type_modifier *r)
         case MUTABLE_MODIFIER_KIND:
             return 1;
     }
-    
+
     UNREACHABLE("type_modifier_eq fell out of switch.");
 }
 
@@ -101,7 +101,7 @@ int type_eq(struct type *l, struct type *r)
     if (r->modifiers.size > l->modifiers.size) {
         return type_eq(r, l);
     }
-    
+
     switch (l->modifiers.size) {
         case 0:
         {
@@ -129,7 +129,7 @@ int type_eq(struct type *l, struct type *r)
             struct type *l_updated = malloc(sizeof(*l_updated));
             *l_updated = *l;
             l_updated->modifiers = l_popped;
-            
+
             if (r->modifiers.size > 0) {
                 if (!type_modifier_eq(&l->modifiers.data[0], &r->modifiers.data[0])) return 0;
                 struct list_type_modifier r_popped = pop(&r->modifiers);
@@ -150,7 +150,7 @@ int type_eq(struct type *l, struct type *r)
             return 0;
         }
     }
-    
+
     UNREACHABLE("type_eq_new");
 }
 
@@ -196,7 +196,7 @@ int binding_statement_check(struct statement *s,
             return 0;
         }
     }
-    
+
     return 1;
 }
 
@@ -263,7 +263,7 @@ int find_function_definition(struct list_char *function_name,
             return 1;
         }
     }
-    
+
     UNREACHABLE("all functions should exist in the global context by this point.");
 }
 
@@ -346,7 +346,6 @@ int type_check_function_expression(struct function_expression *fn,
         add_error_inner(statement_metadata, "more params than fn allows.", error);
         return 0;
     }
-        
     // TODO
     return 1;
     // for (size_t i = 0; i < fn_type.function_type.params.size; i++) {

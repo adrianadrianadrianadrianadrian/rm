@@ -1180,7 +1180,7 @@ int parse_if_statement(struct parser_state *s,
     }
 
     if (!parse_block_statement(s, success_statement, error)) {
-        add_error_inner(s->buffer, error, "invalid success branch.");
+        add_error_inner(s->buffer, error, "invalid success branch within the `if` statement.");
         return 0;
     }
 
@@ -1189,7 +1189,7 @@ int parse_if_statement(struct parser_state *s,
         if (!parse_if_statement(s, else_statement, error) &&
             !parse_block_statement(s, else_statement, error))
         {
-            add_error_inner(s->buffer, error, "invalid else branch.");
+            add_error_inner(s->buffer, error, "invalid else branch within the `if` statement.");
             return 0;
         }
     }
@@ -1310,7 +1310,7 @@ int parse_case_statement(struct parser_state *s,
 {
     struct token tmp = {0};
     struct switch_pattern pattern = {0};
-    struct statement *statement = malloc(sizeof(*s));
+    struct statement *statement = malloc(sizeof(*statement));
     if (!get_token_type(s->buffer, &tmp, CASE_KEYWORD)) return 0;
     if (!parse_switch_pattern(s, &pattern, error))      return 0;
     if (!get_token_type(s->buffer, &tmp, COLON))        return 0;

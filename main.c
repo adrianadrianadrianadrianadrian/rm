@@ -7,7 +7,8 @@
 #include "type_checker.h"
 #include "lowering/c.h"
 
-int compile(char *file_name, struct error *error) {
+int compile(char *file_name, struct error *error)
+{
     FILE *f = fopen(file_name, "r");
     if (f == NULL) {
         write_raw_error(stderr, "input file not found.");
@@ -27,7 +28,8 @@ int compile(char *file_name, struct error *error) {
     return 1;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     struct error error = {0};
 
     if (argc <= 1 || !strcmp(argv[1], "")) {

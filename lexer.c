@@ -23,7 +23,7 @@ struct file_buffer create_file_buffer(FILE *fstream, char *file_name) {
                 .col = col,
                 .file_name = file_name
             };
-            
+
             list_append(&chars, pc);
 
             if (buffer[i] == '\n') {
@@ -40,6 +40,7 @@ struct file_buffer create_file_buffer(FILE *fstream, char *file_name) {
         .size = chars.size,
         .current_position = 0,
     };
+    #undef tmp_buf_size
 }
 
 int read_file_buffer(struct file_buffer *b,
@@ -346,7 +347,7 @@ int next_token(struct file_buffer *b, struct token *out) {
                 list_append(c, test.value);
                 if (!read_file_buffer(b, 1, &test)) return 0;
                 if (test.value != '\'')             return 0;
-                
+
                 *out = (struct token) {
                     .token_type = CHAR_LITERAL,
                     .identifier = c,
@@ -370,7 +371,7 @@ int next_token(struct file_buffer *b, struct token *out) {
 
                 int length = b->current_position - str_start_position;
                 assert(length >= 0);
-                
+
                 *out = (struct token) {
                     .token_type = STR_LITERAL,
                     .identifier = str,
@@ -394,7 +395,7 @@ int next_token(struct file_buffer *b, struct token *out) {
 
                 int length = b->current_position - str_start_position;
                 assert(length >= 0);
-                
+
                 *out = (struct token) {
                     .token_type = C_LITERAL,
                     .identifier = str,

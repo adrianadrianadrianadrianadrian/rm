@@ -11,6 +11,7 @@ void add_error(unsigned int row,
 {
     struct list_char error_message = list_create(char, 35);
     append_list_char_slice(&error_message, message);
+    list_append(&error_message, '\0');
     struct error *boxed = NULL;
     if (out->errored) {
         boxed = malloc(sizeof(*boxed));
@@ -25,7 +26,7 @@ void add_error(unsigned int row,
         .error_message = error_message,
         .inner = boxed
     };
-        
+
     *out = err;
 }
 

@@ -27,7 +27,7 @@ enum token_type {
     DIV,
     PLUS,
     MINUS,
-    
+
     // keywords
     FN_KEYWORD,
     ENUM_KEYWORD,

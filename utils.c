@@ -14,15 +14,15 @@ void append_list_char_slice(struct list_char *dest, char *slice) {
 }
 
 int list_char_eq(struct list_char *l, struct list_char *r) {
-	if (l->size != r->size) {
-		return 0;
-	}
-	
-	for (size_t i = 0; i < l->size; i++) {
-		if (l->data[i] != r->data[i]) {
-			return 0;
-		}
-	}
+    if (l->size != r->size) {
+        return 0;
+    }
 
-	return 1;
+    for (size_t i = 0; i < l->size; i++) {
+        if (l->data[i] != r->data[i]) {
+            return 0;
+        }
+    }
+
+    return 1;
 }

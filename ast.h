@@ -62,7 +62,7 @@ struct function_type {
     struct list_key_type_pair params;
     struct type *return_type;
 };
-    
+
 struct struct_type {
     struct list_key_type_pair pairs;
     int predefined;

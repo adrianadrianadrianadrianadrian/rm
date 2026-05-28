@@ -715,7 +715,7 @@ static void generate_c_file(struct parsed_file *file, struct context *context)
 				fprintf(stderr, "woops");
 				exit(-1);
 			}
-        } 
+        }
     }
 }
 
@@ -742,7 +742,7 @@ void generate_c_header(struct parsed_file *parsed_file) {
         write_function_type(&global_context->fn_types.data[i], header);
         fprintf(header, ";");
     }
-    
+
     fprintf(header, "\n#endif");
 }
 
