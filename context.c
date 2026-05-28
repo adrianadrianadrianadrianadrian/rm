@@ -111,10 +111,10 @@ int contextualise_statement(struct statement *s,
                     for (size_t i = 0; i < fn.params.size; i++) {
                         struct type full_type = {0};
                         if (!infer_full_type(fn.params.data[i].field_type,
-                                            global_context,
-                                            scoped_variables,
-                                            &full_type,
-                                            &error_message))
+                                             global_context,
+                                             scoped_variables,
+                                             &full_type,
+                                             &error_message))
                         {
                             return 0;
                         }
@@ -125,7 +125,7 @@ int contextualise_statement(struct statement *s,
                         };
                         list_append(&fn_scoped_variables, param);
                     }
-                    
+
                     for (size_t i = 0; i < s->type_declaration.statements->size; i++) {
                         struct statement *this = &s->type_declaration.statements->data[i];
                         if (!contextualise_statement(this,
@@ -215,7 +215,7 @@ int contextualise_statement(struct statement *s,
                 };
                 lut_add(&context->statement_scope_lookup, s->if_statement.else_statement->id, scope);
             }
-            
+
             struct type condition_type = {0};
             if (!infer_expression_type(&s->if_statement.condition,
                                        global_context,
@@ -332,7 +332,6 @@ int contextualise(struct parsed_file *parsed_file, struct context *out, struct e
             return 0;
         }
     }
-    
     *out = output;
     return 1;
 }

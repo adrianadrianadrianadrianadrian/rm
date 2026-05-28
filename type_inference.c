@@ -15,7 +15,7 @@ int get_scoped_variable_type(struct list_scoped_variable *scoped_variables,
             return 1;
         }
     }
-    
+
     for (size_t i = 0; i < c->fn_types.size; i++) {
         struct type *fn = &c->fn_types.data[i];
         if (list_char_eq(fn->name, &ident_name)) {
@@ -43,7 +43,7 @@ int find_struct_definition(struct global_context *c,
             return 1;
         }
     }
-    
+
     append_list_char_slice(error, "struct `");
     append_list_char_slice(error, struct_name->data);
     append_list_char_slice(error, "` does not exist.");
@@ -66,7 +66,7 @@ int find_enum_definition(struct global_context *c,
             return 1;
         }
     }
-    
+
     append_list_char_slice(error, "enum `");
     append_list_char_slice(error, enum_name->data);
     append_list_char_slice(error, "` does not exist.");
@@ -88,12 +88,10 @@ int get_field_type(struct list_key_type_pair *pairs,
             } else if (found->kind == TY_ENUM && found->enum_type.predefined) {
                 if (!find_enum_definition(global_context, found->name, found, error)) return 0;
             }
-            
             *out = *found;
             return 1;
         }
     }
-    
     return 0;
 }
 
@@ -176,7 +174,6 @@ int infer_literal_expression_type(struct literal_expression *e,
                 }
             };
             list_append(&modifiers, array);
-            
             *out = (struct type) {
                 .kind = TY_PRIMITIVE,
                 .primitive_type = U8,
@@ -217,7 +214,7 @@ int infer_function_type(struct type *matched_fn,
         append_list_char_slice(error_message, "`");
         return 0;
     }
-    
+
     if (matched_fn->function_type.params.size == value_count) {
         if (matched_fn->function_type.return_type->kind == TY_STRUCT) {
             return find_struct_definition(global_context,
@@ -229,7 +226,7 @@ int infer_function_type(struct type *matched_fn,
         *out = *matched_fn->function_type.return_type;
         return 1;
     }
-    
+
     struct type *inferred = malloc(sizeof(*inferred));
     struct list_key_type_pair params = list_create(key_type_pair, matched_fn->function_type.params.size - value_count);
     for (size_t i = value_count; i < matched_fn->function_type.params.size; i++) {
@@ -305,21 +302,20 @@ int infer_expression_type(struct expression *e,
             {
                 return 0;
             }
-            
-            // TODO
+
             switch (e->binary.binary_op) {
                 case MULTIPLY_BINARY:
-                {
-                    return 1;
-                }
                 case PLUS_BINARY:
                 case MINUS_BINARY:
                 case ASSIGN_BINARY:
                 case BITWISE_OR_BINARY:
                 case BITWISE_AND_BINARY:
                 {
-                    TODO("binary ops");
-                    return 0;
+                    // TODO: do we need a different, w.r.t ast, repersentation of what a type is here?
+                    // for now I'll just return left
+                    *out = left;
+                    lut_add(&context->expression_type_lookup, e->id, *out);
+                    return 1;
                 }
                 case GREATER_THAN_BINARY:
                 case LESS_THAN_BINARY:
@@ -354,7 +350,6 @@ int infer_expression_type(struct expression *e,
         case FUNCTION_EXPRESSION:
         {
             size_t value_count = e->function.params->size;
-            
             for (size_t i = 0; i < global_context->fn_types.size; i++) {
                 struct type *global_fn = &global_context->fn_types.data[i];
                 if (list_char_eq(e->function.function_name, global_context->fn_types.data[i].name)) {
@@ -388,7 +383,7 @@ int infer_expression_type(struct expression *e,
             {
                 return 0;
             }
-            
+
             // TODO: enums
             if (accessed.kind != TY_STRUCT) {
                 append_list_char_slice(error, "can only access fields of structs.");
@@ -450,6 +445,6 @@ int infer_full_type(struct type *incomplete_type,
             return 1;
         }
     }
-    
+
     UNREACHABLE("dropped out of type switch within infer_full_type");
 }

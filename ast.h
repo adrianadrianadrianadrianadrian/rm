@@ -115,7 +115,7 @@ typedef struct key_expression {
 } key_expression;
 
 struct_list(key_expression);
-    
+
 struct literal_struct_enum {
     struct list_char *name;
     struct list_key_expression key_expr_pairs;
@@ -211,7 +211,7 @@ enum switch_pattern_kind {
     UNDERSCORE_PATTERN_KIND,
     REST_PATTERN_KIND
 };
-    
+
 typedef struct key_pattern_pair {
     struct list_char key;
     struct switch_pattern *pattern;

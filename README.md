@@ -7,12 +7,6 @@ struct person {
     age: i32,
     height: i32,
     sibling: ?*struct person,
-    buffer: *[2][1024]u32
-}
-
-enum result {
-    ok: struct person,
-    error: i32
 }
 
 struct api_client {
@@ -23,12 +17,11 @@ fn factorial(input: i32) -> i32 {
     if (input == 0) {
         return 1;
     }
-    
     return input * factorial(input - 1);
 }
 
 fn main() -> i32 {
-    let loop_count: mut i32 = 9;
+    let loop_count: i32 = 9;
     let i: ?i32 = null;
     let client = struct api_client { port = 8080 };
 
