@@ -113,14 +113,8 @@ void read_file_names_recursive(char *dir,
     }
 }
 
-void rebuild()
-{
-    system("gcc -o build build.c lib/collections.c");
-}
-
 int main(int argc, char **argv)
 {
-    rebuild();
     struct list_string files = list_create(string, 100);
     read_file_names_recursive("src", &files);
     read_file_names_recursive("lib", &files);
