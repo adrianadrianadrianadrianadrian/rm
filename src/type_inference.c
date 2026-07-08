@@ -1,6 +1,7 @@
 #include "type_inference.h"
 #include "ast.h"
-#include "utils.h"
+#include "../lib/collections.h"
+#include "../lib/utils.h"
 #include <assert.h>
 
 int get_scoped_variable_type(struct list_scoped_variable *scoped_variables,

@@ -3,7 +3,8 @@
 #include "ast.h"
 #include "context.h"
 #include "parser.h"
-#include "utils.h"
+#include "../lib/collections.h"
+#include "../lib/utils.h"
 #include <string.h>
 #include "type_checker.h"
 #include "error.h"

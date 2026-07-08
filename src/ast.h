@@ -2,7 +2,7 @@
 #define AST_H
 
 #include <math.h>
-#include "utils.h"
+#include "../lib/collections.h"
 
 enum primitive_type {
     VOID = 1,

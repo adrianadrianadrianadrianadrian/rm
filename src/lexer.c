@@ -3,9 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "utils.h"
+#include "../lib/collections.h"
 
-struct file_buffer create_file_buffer(FILE *fstream, char *file_name) {
+struct file_buffer create_file_buffer(FILE *fstream, char *file_name)
+{
     #define tmp_buf_size 1024
     static char buffer[tmp_buf_size];
     struct list_positional_char chars = list_create(positional_char, tmp_buf_size);
@@ -544,7 +545,7 @@ int peek_token_type(struct token_buffer *s, enum token_type ty)
 {
     struct token tmp = {0};
     int output = 0;
-    if (get_token_type(s, &tmp, DOT)) {
+    if (get_token_type(s, &tmp, ty)) {
         seek_back_token(s, 1);
         output = 1;
     }

@@ -8,6 +8,7 @@
 #include "lowering/c.h"
 #include <sys/time.h>
 #include <unistd.h>
+#include "debug.h"
 
 struct timeval current_time()
 {
@@ -39,6 +40,7 @@ int compile(char *file_name, struct error *error)
     struct timeval parse_end = current_time();
     if (!contextualise(&parsed, &c, error))   return 0;
     struct timeval context_end = current_time();
+    show_context(&c);
     if (!soundness_check(&parsed, &c, error)) return 0;
     struct timeval soundness_end = current_time();
     if (!type_check(&parsed, &c, error))      return 0;

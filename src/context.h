@@ -1,7 +1,7 @@
 #ifndef CONTEXT_H
 #define CONTEXT_H
 
-#include "utils.h"
+#include "../lib/collections.h"
 #include "ast.h"
 #include "parser.h"
 #include "error.h"

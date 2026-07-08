@@ -2,7 +2,7 @@
 #define LEXER_H
 
 #include <stdio.h>
-#include "utils.h"
+#include "../lib/collections.h"
 
 enum token_type {
     SEMICOLON = 1,

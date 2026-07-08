@@ -1,7 +1,7 @@
 #ifndef ERROR_H
 #define ERROR_H
 
-#include "utils.h"
+#include "../lib/collections.h"
 #include "lexer.h"
 #include <stdio.h>
 

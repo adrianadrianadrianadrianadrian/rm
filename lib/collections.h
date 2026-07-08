@@ -1,5 +1,5 @@
-#ifndef UTILS_H
-#define UTILS_H
+#ifndef COLLECTIONS_H
+#define COLLECTIONS_H
 
 #include <stdio.h>
 #include <stddef.h>
@@ -36,6 +36,14 @@
         (l)->size += 1;                                     \
     } while (0)
 
+struct_list(int);
+static struct list_int *create_boxed_list_int(size_t cap)
+{
+    struct list_int *output = malloc(sizeof(*output));
+    *output = list_create(int, cap);
+    return output;
+}
+
 // Look up table (LUT)
 #define LUT_NAME(ty) lut_##ty
 
@@ -43,12 +51,14 @@
     struct LUT_NAME(ty) {                                   \
         ty *data;                                           \
         size_t capacity;                                    \
+        struct list_int *keys;                              \
     }
 
 #define lut_create(ty, cap)                                 \
     (struct LUT_NAME(ty)) {                                 \
         .data = malloc(sizeof(ty) * cap),                   \
-        .capacity = cap                                     \
+        .capacity = cap,                                    \
+        .keys = create_boxed_list_int(cap)                  \
     }
 
 #define lut_add(l, i, item)                                     \
@@ -63,29 +73,12 @@
             (l)->capacity = new_capacity;                       \
         }                                                       \
         (l)->data[(i)] = item;                                  \
+        list_append((l)->keys, (i));                            \
     } while (0)
 
 #define lut_get(l, i) (l)->data[i]
 
-#define TODO(msg)                                                        \
-    do {                                                                 \
-        fprintf(stderr, "%s:%d: todo: `%s`\n", __FILE__, __LINE__, msg); \
-        exit(1);                                                         \
-    } while (0)
-
-#define UNREACHABLE(msg)                                                        \
-    do {                                                                        \
-        fprintf(stderr, "%s:%d: unreachable: `%s`\n", __FILE__, __LINE__, msg); \
-        exit(1);                                                                \
-    } while (0)
-
 struct_list(char);
-
-typedef struct string {
-    struct list_char name;
-} string;
-
-struct_list(string);
 
 void copy_list_char(struct list_char *dest, struct list_char *src);
 void append_list_char_slice(struct list_char *dest, char *slice);

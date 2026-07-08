@@ -1,9 +1,9 @@
 #include "ast.h"
 #include "parser.h"
-#include "utils.h"
+#include "../lib/utils.h"
 #include <assert.h>
 #include <string.h>
-#include "utils.h"
+#include "../lib/collections.h"
 #include "context.h"
 #include "type_inference.h"
 

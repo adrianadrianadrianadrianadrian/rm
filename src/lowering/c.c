@@ -3,11 +3,13 @@
 #include <assert.h>
 #include "c.h"
 #include <regex.h>
-#include "../utils.h"
+#include "../../lib/utils.h"
+#include <math.h>
 
 void write_type(struct type *ty, FILE *file);
 
-void write_primitive_type(struct type *ty, FILE *file) {
+void write_primitive_type(struct type *ty, FILE *file)
+{
     assert(ty->kind == TY_PRIMITIVE);
     switch (ty->primitive_type) {
         case VOID:
@@ -54,7 +56,8 @@ void write_primitive_type(struct type *ty, FILE *file) {
     }
 }
 
-void append_int(int input, struct list_char *out) {
+void append_int(int input, struct list_char *out)
+{
     size_t size = (int)(ceil(log10(input)) + 1);
     char *str = malloc(size);
     sprintf(str, "%d", input);
@@ -110,7 +113,8 @@ struct list_char apply_type_modifiers(struct list_type_modifier modifiers, struc
     return output;
 }
 
-void write_struct_type(struct type *ty, int full, FILE *file) {
+void write_struct_type(struct type *ty, int full, FILE *file)
+{
     assert(ty->kind == TY_STRUCT);
     if (!full) {
         fprintf(file, "struct %s", ty->name->data);
@@ -129,7 +133,8 @@ void write_struct_type(struct type *ty, int full, FILE *file) {
     fprintf(file, "};");
 }
 
-void write_enum_type(struct type *ty, int full, FILE *file) {
+void write_enum_type(struct type *ty, int full, FILE *file)
+{
     assert(ty->kind == TY_ENUM);
     if (!full) {
         fprintf(file, "struct %s_type", ty->name->data);
@@ -167,9 +172,9 @@ void write_enum_type(struct type *ty, int full, FILE *file) {
         fprintf(file, " %s;", modified.data);
     }
     fprintf(file, "};};");
-    
+    //
     // TODO: current idea is to generate constructor functions per enum variant
-    // 
+    //
     // struct person { int age; };
     // enum result_kind {
     //     result_kind_ok,
@@ -189,7 +194,8 @@ void write_enum_type(struct type *ty, int full, FILE *file) {
     // Then when we write the binding expressions for enums we can map to these functions
 }
 
-void write_function_type(struct type *ty, FILE *file) {
+void write_function_type(struct type *ty, FILE *file)
+{
     assert(ty->kind == TY_FUNCTION);
     write_type(ty->function_type.return_type, file);
     struct list_type_modifier return_modifiers = ty->function_type.return_type->modifiers;
@@ -469,7 +475,8 @@ void write_expression(struct expression *e,
 
 void write_statement(struct statement *s, struct context *context, FILE *file);
 
-void write_type_default(struct type *type, struct type *defined_type, FILE *file) {
+void write_type_default(struct type *type, struct type *defined_type, FILE *file)
+{
     // TODO: derive default C values 
     struct type *ty = type->kind == TY_ANY ? defined_type : type;
     if (ty->kind == TY_STRUCT) {
@@ -502,7 +509,8 @@ void write_binding_statement(struct statement *s,
     fprintf(file, ";");
 }
 
-void write_if_statement(struct statement *s, struct context *context, FILE *file) {
+void write_if_statement(struct statement *s, struct context *context, FILE *file)
+{
     assert(s->kind == IF_STATEMENT);
     fprintf(file, "if (");
     struct list_scoped_variable scoped_variables =
@@ -516,7 +524,8 @@ void write_if_statement(struct statement *s, struct context *context, FILE *file
     }
 }
 
-void write_return_statement(struct statement *s, struct context *context, FILE *file) {
+void write_return_statement(struct statement *s, struct context *context, FILE *file)
+{
     assert(s->kind == RETURN_STATEMENT);
     fprintf(file, "return ");
     struct list_scoped_variable scoped_variables =
@@ -524,8 +533,6 @@ void write_return_statement(struct statement *s, struct context *context, FILE *
     write_expression(&s->expression, context, &scoped_variables, file);
     fprintf(file, ";");
 }
-
-struct_list(int);
 
 void write_block_statement(struct list_statement *statements, struct context *context, FILE *file) {
     fprintf(file, "{");
@@ -535,7 +542,8 @@ void write_block_statement(struct list_statement *statements, struct context *co
     fprintf(file, "}");
 }
 
-void write_action_statement(struct statement *s, struct context *context, FILE *file) {
+void write_action_statement(struct statement *s, struct context *context, FILE *file)
+{
     assert(s->kind == ACTION_STATEMENT);
     struct list_scoped_variable scoped_variables =
         lut_get(&context->statement_scope_lookup, s->id).scoped_variables;
@@ -543,7 +551,8 @@ void write_action_statement(struct statement *s, struct context *context, FILE *
     fprintf(file, ";");
 }
 
-void write_while_statement(struct statement *s, struct context *context, FILE *file) {
+void write_while_statement(struct statement *s, struct context *context, FILE *file)
+{
     assert(s->kind == WHILE_LOOP_STATEMENT);
     fprintf(file, "while (");
     struct list_scoped_variable scoped_variables =
@@ -564,7 +573,8 @@ void write_type_declaration_statement(struct type_declaration_statement *s,
     }
 }
 
-void write_break_statement(FILE *file) {
+void write_break_statement(FILE *file)
+{
     fprintf(file, "break;");
 }
 
@@ -615,7 +625,8 @@ void write_case_statement(struct case_statement *s,
     // fprintf(file, "}");
 }
 
-void write_switch_statement(struct switch_statement *s, FILE *file) {
+void write_switch_statement(struct switch_statement *s, FILE *file)
+{
     // struct type inferred_type = {0};
     // if (infer_type(&s->switch_expression, scope, &inferred_type)) {
     //     write_type(&inferred_type, file);
@@ -629,11 +640,13 @@ void write_switch_statement(struct switch_statement *s, FILE *file) {
     // }
 }
 
-void write_c_block(struct c_block_statement *s, FILE *file) {
+void write_c_block(struct c_block_statement *s, FILE *file)
+{
     fprintf(file, "%s\n", s->raw_c->data);
 }
 
-void write_statement(struct statement *s, struct context *context, FILE *file) {
+void write_statement(struct statement *s, struct context *context, FILE *file)
+{
     switch (s->kind) {
         case BINDING_STATEMENT:
             write_binding_statement(s, context, file);
@@ -719,7 +732,8 @@ static void generate_c_file(struct parsed_file *file, struct context *context)
     }
 }
 
-void generate_c_header(struct parsed_file *parsed_file) {
+void generate_c_header(struct parsed_file *parsed_file)
+{
     struct global_context *global_context = &parsed_file->global_context;
     FILE *header = fopen("target/c_output.h", "w");
     fprintf(header, "#ifndef C_OUTPUT_H\n#define C_OUTPUT_H\n");

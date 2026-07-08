@@ -3,8 +3,15 @@
 #include "context.h"
 #include "parser.h"
 #include "error.h"
-#include "utils.h"
+#include "../lib/collections.h"
+#include "../lib/utils.h"
 #include <assert.h>
+
+typedef struct string {
+    struct list_char name;
+} string;
+
+struct_list(string);
 
 static void add_error_inner(struct statement_metadata *metadata,
                             char *error_message,
@@ -37,7 +44,7 @@ int check_literal_expression_soundness(struct literal_expression *e,
                     return 1;
                 }
             }
-            
+
             for (size_t i = 0; i < global_context->fn_types.size; i++) {
                 struct type *fn_type = &global_context->fn_types.data[i];
                 if (list_char_eq(e->name, fn_type->name)) {
@@ -66,12 +73,12 @@ int check_literal_expression_soundness(struct literal_expression *e,
                         UNREACHABLE("data types are either enums or structs.");
                     }
                     assert(pairs);
-                    
+
                     if (pairs->size < e->struct_enum.key_expr_pairs.size) {
                         append_list_char_slice(error, "too many fields provided.");
                         return 0;
                     }
-                    
+
                     for (size_t p = 0; p < pairs->size; p++) {
                         int found = 0;
                         for (size_t l = 0; l < e->struct_enum.key_expr_pairs.size; l++) {
@@ -96,7 +103,7 @@ int check_literal_expression_soundness(struct literal_expression *e,
                             return 0;
                         }
                     }
-    
+
                     return 1;
                 }
             }
@@ -172,14 +179,13 @@ int check_struct_soundness(struct type *type,
             }
         }
     }
-    
+
     struct list_string visited = list_create(string, 10);
     struct list_key_type_pair pairs = type->struct_type.pairs;
     for (size_t i = 0; i < pairs.size; i++) {
         struct string field_name = (struct string) {
             .name = pairs.data[i].field_name
         };
-        
         for (size_t j = 0; j < visited.size; j++) {
             if (list_char_eq(&visited.data[j].name, &field_name.name)) {
                 append_list_char_slice(error, "field `");
@@ -191,7 +197,7 @@ int check_struct_soundness(struct type *type,
 
         list_append(&visited, field_name);
     }
-    
+
     for (size_t i = 0; i < pairs.size; i++) {
         struct type *ty = pairs.data[i].field_type;
         for (size_t m = 0; m < ty->modifiers.size; m++) {
@@ -215,7 +221,7 @@ int check_struct_soundness(struct type *type,
                             }
                         }
                     }
-                    
+
                     if (!found) {
                         append_list_char_slice(error, "`");
                         append_list_char_slice(error, ref_name->data);
@@ -284,7 +290,7 @@ int check_binding_statement_soundness(struct statement *s,
             return 0;
         }
     }
-    
+
     for (size_t i = 0; i < global_context->fn_types.size; i++) {
         if (list_char_eq(binding_name, global_context->fn_types.data[i].name)) {
             append_list_char_slice(&error_message, "the binding name `");
@@ -332,7 +338,7 @@ int check_if_statement_soundness(struct statement *s,
         add_error_inner(&metadata, error_message.data, error);
         return 0;
     }
-    
+
     if (!check_statement_soundness(if_statement->success_statement,
                                    global_context,
                                    context,
@@ -373,7 +379,7 @@ int check_return_statement_soundness(struct statement *s,
         add_error_inner(&metadata, error_message.data, error);
         return 0;
     }
-    
+
     return 1;
 }
 
@@ -440,7 +446,7 @@ int check_while_statement_soundness(struct statement *s,
         add_error_inner(&metadata, error_message.data, error);
         return 0;
     }
-    
+
     if (!check_statement_soundness(while_statement->do_statement,
                                    global_context,
                                    context,
