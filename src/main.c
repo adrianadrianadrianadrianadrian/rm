@@ -48,12 +48,12 @@ int compile(char *file_name, struct error *error)
     generate_c(&parsed, &c);
     struct timeval codegen_end = current_time();
 
-    printf("parsed        %lfms\n", ms_delta(&start, &parse_end));
-    printf("context       %lfms\n", ms_delta(&parse_end, &context_end));
-    printf("soundess      %lfms\n", ms_delta(&context_end, &soundness_end));
-    printf("type_checked  %lfms\n", ms_delta(&soundness_end, &type_check_end));
-    printf("codegen       %lfms\n", ms_delta(&type_check_end, &codegen_end));
-    printf("total         %lfms\n", ms_delta(&start, &codegen_end));
+    printf("parsed          %lfms\n", ms_delta(&start, &parse_end));
+    printf("context         %lfms\n", ms_delta(&parse_end, &context_end));
+    printf("soundess        %lfms\n", ms_delta(&context_end, &soundness_end));
+    printf("type_checked    %lfms\n", ms_delta(&soundness_end, &type_check_end));
+    printf("codegen         %lfms\n", ms_delta(&type_check_end, &codegen_end));
+    printf("total           %lfms\n", ms_delta(&start, &codegen_end));
 
     return 1;
 }

@@ -763,6 +763,7 @@ void generate_c_header(struct parsed_file *parsed_file)
 void generate_c(struct parsed_file *parsed_file,
                 struct context *context)
 {
-    generate_c_header(parsed_file);
-    generate_c_file(parsed_file, context);
+    // TODO
+    // generate_c_header(parsed_file);
+    // generate_c_file(parsed_file, context);
 }
