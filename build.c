@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <dirent.h>
 #include <string.h>
-#include "lib/collections.h"
+#include "lib/collections.c"
 
 typedef struct list_char string;
 struct_list(string);
@@ -90,9 +90,13 @@ void read_file_names_recursive(char *dir,
         switch (entry->d_type) {
             case DT_DIR:
             {
-                if (!strcmp(".", entry->d_name) || !strcmp("..", entry->d_name) || entry->d_name[0] == '.') {
+                if (!strcmp(".", entry->d_name)
+                    || !strcmp("..", entry->d_name)
+                    || entry->d_name[0] == '.')
+                {
                     continue;
                 }
+
                 struct list_char inner_dir = from_slice(dir);
                 append_list_char_slice(&inner_dir, "/");
                 append_list_char_slice(&inner_dir, entry->d_name);
