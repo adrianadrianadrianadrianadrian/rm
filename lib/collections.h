@@ -19,7 +19,7 @@
     (struct LIST_NAME(ty)) {                                \
         .data = malloc(sizeof(ty) * cap),                   \
         .size = 0,                                          \
-        .capacity = cap                                     \
+        .capacity = cap > 0 ? cap : 1                       \
     }
 
 #define list_append(l, item)                                \
@@ -57,7 +57,7 @@ static struct list_int *create_boxed_list_int(size_t cap)
 #define lut_create(ty, cap)                                 \
     (struct LUT_NAME(ty)) {                                 \
         .data = malloc(sizeof(ty) * cap),                   \
-        .capacity = cap,                                    \
+        .capacity = cap > 0 ? cap : 1,                      \
         .keys = create_boxed_list_int(cap)                  \
     }
 
