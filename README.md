@@ -1,7 +1,10 @@
 This is just me learning about language/compiler design by doing. Goal of this would be to build a language that's somewhere between C and Rust, but closer to C. I'll just lower to C, probably forever.
 
-oh, and I'm letting it leak memory everywhere for now.
+oh, and I'm letting it leak memory everywhere for now (ever).
 
+To have a play: `gcc -o build build.c && ./build` then `./rm main.rm`.
+
+This is constantly changing but currently looks like the following:
 ```
 struct person {
     age: i32,
@@ -36,33 +39,5 @@ fn main() -> i32 {
 
 fn person_age(p: struct person) -> i32 {
     return p.age;
-}
-```
-
-switch statement current idea, I'd like full pattern matching here.
-```
-struct person {
-    age: u32,
-    height: u32
-}
-
-enum result {
-    ok: struct person,
-    error: i32
-}
-
-fn test(res: enum result) -> void {
-    switch (res) {
-        case { ok: p@{ age: 21 }}:
-        {
-            `printf("Height of 21 year old is %d\n", p.height);`
-            break;
-        }
-        case { error: err }:
-        {
-            `printf("Error!!!! %d\n", err);`
-            break;
-        }
-    }
 }
 ```

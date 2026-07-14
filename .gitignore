@@ -1,4 +1,4 @@
 test.rm
-compiler
+rm
 build
 target/*

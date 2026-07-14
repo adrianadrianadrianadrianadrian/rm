@@ -126,7 +126,7 @@ int main(int argc, char **argv)
 
     struct list_char cmd = list_create(char, 100);
     append_list_char_slice(&cmd, "gcc");
-    append_list_char_slice(&cmd, " -o compiler");
+    append_list_char_slice(&cmd, " -o rm");
 
     for (int i = 0; i < c_files.size; ++i) {
         append_list_char_slice(&cmd, " ");
