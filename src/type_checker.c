@@ -39,7 +39,8 @@ struct list_char type_mismatch_generic_error(struct type *expected, struct type 
     return output;
 }
 
-int fn_type_eq(struct function_type *l, struct function_type *r) {
+int fn_type_eq(struct function_type *l, struct function_type *r)
+{
     if (l->params.size != r->params.size) {
         return 0;
     }
@@ -504,7 +505,8 @@ int type_check_single(struct statement *s,
     UNREACHABLE("type_check_single dropped out of a switch on all kinds of statements.");
 }
 
-int type_check(struct parsed_file *parsed_file, struct context *context, struct error *error) {
+int type_check(struct parsed_file *parsed_file, struct context *context, struct error *error)
+{
     struct list_statement statements = parsed_file->statements;
     for (size_t i = 0; i < statements.size; i++) {
         if (!type_check_single(&statements.data[i], &parsed_file->global_context, context, error)) return 0;
@@ -549,7 +551,8 @@ struct list_char show_modifier(struct type_modifier *m)
     return output;
 }
 
-struct list_char show_type(struct type *ty) {
+struct list_char show_type(struct type *ty)
+{
     struct list_char output = list_create(char, 10);
     if (ty == NULL) {
         return output;

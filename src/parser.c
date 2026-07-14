@@ -127,7 +127,8 @@ int is_primitive(struct list_char *raw, enum primitive_type *out)
     return 0;
 }
 
-struct key_type_pair create_key_type_pair() {
+struct key_type_pair create_key_type_pair()
+{
     return (struct key_type_pair) {
         .field_name = list_create(char, 10),
         .field_type = malloc(sizeof(struct type))
@@ -703,7 +704,8 @@ int parse_function_expression(struct parser_state *s,
     return 1;
 }
 
-int parse_expression_inner(struct parser_state *s, struct expression *out, struct error *error) {
+int parse_expression_inner(struct parser_state *s, struct expression *out, struct error *error)
+{
     struct token tmp = {0};
     enum unary_operator unary_op;
 
@@ -793,7 +795,8 @@ int parse_member_access_expression(struct parser_state *s,
     return succeeded;
 }
 
-int parse_expression(struct parser_state *s, struct expression *out, struct error *error) {
+int parse_expression(struct parser_state *s, struct expression *out, struct error *error)
+{
     enum binary_operator op;
     int parsed_left = 0;
     struct expression *l = malloc(sizeof(*l));

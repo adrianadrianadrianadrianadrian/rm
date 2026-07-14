@@ -61,7 +61,8 @@ int read_file_buffer(struct file_buffer *b,
     return 1;
 }
 
-void seek_back(struct file_buffer *b, size_t amount) {
+void seek_back(struct file_buffer *b, size_t amount)
+{
     if (b->size == 0) return;
     assert(b->current_position >= amount);
     b->current_position -= amount;
@@ -87,7 +88,8 @@ void read_until(struct file_buffer *b,
     }
 }
 
-int is_keyword(struct list_char *ident, enum token_type *out) {
+int is_keyword(struct list_char *ident, enum token_type *out)
+{
     if (strcmp(ident->data, "fn") == 0) {
         *out = FN_KEYWORD;
         return 1;
@@ -166,7 +168,8 @@ int is_keyword(struct list_char *ident, enum token_type *out) {
     return 0;
 }
 
-int whitespace(char c) {
+int whitespace(char c)
+{
     switch (c) {
         case ' ':
         case '\n':
@@ -178,15 +181,18 @@ int whitespace(char c) {
     }
 }
 
-int is_double_quote(char c) {
+int is_double_quote(char c)
+{
     return c == '"';
 }
 
-int is_backtick(char c) {
+int is_backtick(char c)
+{
     return c == '`';
 }
 
-int is_special_char(char c) {
+int is_special_char(char c)
+{
     switch (c) {
         case ':':
         case ';':
@@ -219,11 +225,13 @@ int is_special_char(char c) {
     }
 }
 
-int is_special_or_whitespace(char c) {
+int is_special_or_whitespace(char c)
+{
     return is_special_char(c) || whitespace(c);
 }
 
-int is_newline(char c) {
+int is_newline(char c)
+{
     return c == '\n';
 }
 
@@ -241,7 +249,8 @@ struct token basic_token(enum token_type token_type,
     };
 }
 
-int next_token(struct file_buffer *b, struct token *out) {
+int next_token(struct file_buffer *b, struct token *out)
+{
     struct positional_char test;
     while (read_file_buffer(b, 1, &test)) {
         switch (test.value) {
@@ -492,7 +501,8 @@ int next_token(struct file_buffer *b, struct token *out) {
     return 0;
 }
 
-struct token_buffer create_token_buffer(FILE *fstream, char *file_name) {
+struct token_buffer create_token_buffer(FILE *fstream, char *file_name)
+{
     struct file_buffer b = create_file_buffer(fstream, file_name);
     struct list_token tokens = list_create(token, b.size);
     struct token tok;
@@ -515,14 +525,16 @@ struct token_metadata *get_token_metadata(const struct token_buffer *toks, size_
     return &toks->tokens.data[position].metadata;
 }
 
-int get_token(struct token_buffer *s, struct token *out) {
+int get_token(struct token_buffer *s, struct token *out)
+{
     if (s->current_position >= s->size) return 0;
     *out = s->tokens.data[s->current_position];
     s->current_position += 1;
     return 1;
 }
 
-void seek_back_token(struct token_buffer *s, size_t amount) {
+void seek_back_token(struct token_buffer *s, size_t amount)
+{
     assert(s->current_position >= amount);
     s->current_position -= amount;
 }
