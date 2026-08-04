@@ -7,12 +7,6 @@
 #include "../lib/utils.h"
 #include <assert.h>
 
-typedef struct string {
-    struct list_char name;
-} string;
-
-struct_list(string);
-
 static void add_error_inner(struct statement_metadata *metadata,
                             char *error_message,
                             struct error *out)
@@ -183,13 +177,11 @@ int check_struct_soundness(struct type *type,
     struct list_string visited = list_create(string, 10);
     struct list_key_type_pair pairs = type->struct_type.pairs;
     for (size_t i = 0; i < pairs.size; i++) {
-        struct string field_name = (struct string) {
-            .name = pairs.data[i].field_name
-        };
+        struct list_char field_name = pairs.data[i].field_name;
         for (size_t j = 0; j < visited.size; j++) {
-            if (list_char_eq(&visited.data[j].name, &field_name.name)) {
+            if (list_char_eq(&visited.data[j], &field_name)) {
                 append_list_char_slice(error, "field `");
-                append_list_char_slice(error, field_name.name.data);
+                append_list_char_slice(error, field_name.data);
                 append_list_char_slice(error, "` already exists on struct.");
                 return 0;
             }

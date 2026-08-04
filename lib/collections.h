@@ -80,6 +80,9 @@ static struct list_int *create_boxed_list_int(size_t cap)
 
 struct_list(char);
 
+typedef struct list_char string;
+struct_list(string);
+
 void copy_list_char(struct list_char *dest, struct list_char *src);
 void append_list_char_slice(struct list_char *dest, char *slice);
 int list_char_eq(struct list_char *l, struct list_char *r);

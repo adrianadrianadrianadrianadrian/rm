@@ -4,9 +4,7 @@
 #include <dirent.h>
 #include <string.h>
 #include "lib/collections.c"
-
-typedef struct list_char string;
-struct_list(string);
+#include "debug.c"
 
 #define ERROR(...)                        \
     do {                                  \
@@ -23,14 +21,11 @@ struct list_char read_file_to_string(const char *filename)
         ERROR("issue opening `%s`", filename);
     }
 
-    struct list_char output = list_create(char, 100);
-    char buf[1024] = {0};
-    while (fread(&buf, sizeof(char), sizeof(*buf), file)) {
-        for (int i = 0; i < sizeof(*buf); ++i) {
-            list_append(&output, buf[i]);
-        }
-    }
-
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    struct list_char output = list_create(char, (size_t)size);
+    size_t read = fread(output.data, sizeof(char), size, file);
     return output;
 }
 
@@ -63,7 +58,7 @@ int ends_with(struct list_char *input, char *str)
         return 0;
     }
 
-    for (int i = 0; i < len; ++i) {
+    for (size_t i = 0; i < len; ++i) {
         if (input->data[input->size - (len - i)] != str[i]) {
             return 0;
         }
@@ -75,6 +70,11 @@ int ends_with(struct list_char *input, char *str)
 int is_c_file(struct list_char *input)
 {
     return ends_with(input, ".c");
+}
+
+int is_h_file(struct list_char *input)
+{
+    return ends_with(input, ".h");
 }
 
 void read_file_names_recursive(char *dir,
@@ -119,20 +119,38 @@ void read_file_names_recursive(char *dir,
 
 int main(int argc, char **argv)
 {
+    struct debug_state debug_state = (struct debug_state) {
+        .structs = list_create(c_struct, 100)
+    };
     struct list_string files = list_create(string, 100);
     read_file_names_recursive("src", &files);
     read_file_names_recursive("lib", &files);
     struct list_string c_files = filter(&files, is_c_file);
+    struct list_string h_files = filter(&files, is_h_file);
 
     struct list_char cmd = list_create(char, 100);
     append_list_char_slice(&cmd, "gcc");
     append_list_char_slice(&cmd, " -o rm");
 
-    for (int i = 0; i < c_files.size; ++i) {
+    for (size_t i = 0; i < c_files.size; ++i) {
         append_list_char_slice(&cmd, " ");
         append_list_char_slice(&cmd, c_files.data[i].data);
+        if (!apply_file(&debug_state, c_files.data[i].data)) {
+            ERROR("unable to create debug derivations.");
+        }
     }
 
+    for (size_t i = 0; i < h_files.size; ++i) {
+        if (!apply_file(&debug_state, h_files.data[i].data)) {
+            ERROR("unable to create debug derivations.");
+        }
+    }
+
+    // if (!generate_debug_file(&debug_state, "lib", "debug.c")) {
+    //     ERROR("unable to create debug.c file.");
+    // }
+
+    append_list_char_slice(&cmd, " lib/debug.c");
     append_list_char_slice(&cmd, " -lm");
     append_list_char_slice(&cmd, " -D DEBUG_CONTEXT");
     list_append(&cmd, '\0');

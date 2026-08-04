@@ -1,4 +1,5 @@
 #include "collections.h"
+#include <assert.h>
 
 void copy_list_char(struct list_char *dest, struct list_char *src) {
     for (size_t i = 0; i < src->size && src->data[i] != '\0'; i++) {
