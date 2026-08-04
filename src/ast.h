@@ -5,19 +5,20 @@
 #include "../lib/collections.h"
 
 enum primitive_type {
-    VOID = 1,
-    BOOL,
-    U8,
-    I8,
-    I16,
-    U16,
-    I32,
-    U32,
-    I64,
-    U64,
-    USIZE,
-    F32,
-    F64
+    //    djb2_hash
+    VOID  = 6385805911L,   // void
+    BOOL  = 6385087377L,   // bool
+    U8    = 5863826L,      // u8
+    I8    = 5863430L,      // i8
+    I16   = 193493013L,    // i16
+    U16   = 193506081L,    // u16
+    I32   = 193493075L,    // i32
+    U32   = 193506143L,    // u32
+    I64   = 193493176L,    // i64
+    U64   = 193506244L,    // u64
+    USIZE = 210730553717L, // usize
+    F32   = 193489808L,    // f32
+    F64   = 193489909L     // f64
 };
 
 enum type_modifier_kind {

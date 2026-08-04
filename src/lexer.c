@@ -113,6 +113,8 @@ int is_keyword(struct list_char *ident, enum token_type *out)
         default:
             return 0;
     }
+
+    UNREACHABLE("is_keyword fell out of a switch");
 }
 
 int whitespace(char c)

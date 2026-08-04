@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../lib/collections.h"
+#include "../lib/utils.h"
 #include "ast.h"
 #include "lexer.h"
 #include "error.h"
@@ -59,72 +60,28 @@ struct statement_metadata get_statement_metadata(const struct token_buffer *s)
 
 int is_primitive(struct list_char *raw, enum primitive_type *out)
 {
-    if (strcmp(raw->data, "void") == 0) {
-        *out = VOID;
-        return 1;
+    unsigned long hash = djb2_hash(raw->data);
+    switch (hash) {
+		case VOID:
+		case BOOL:
+		case U8:
+		case I8:
+		case I16:
+		case U16:
+		case I32:
+		case U32:
+		case I64:
+		case U64:
+		case USIZE:
+		case F32:
+		case F64:
+            *out = hash;
+            return 1;
+        default:
+            return 0;
     }
 
-    if (strcmp(raw->data, "bool") == 0) {
-        *out = BOOL;
-        return 1;
-    }
-
-    if (strcmp(raw->data, "i8") == 0) {
-        *out = I8;
-        return 1;
-    }
-
-    if (strcmp(raw->data, "u8") == 0) {
-        *out = U8;
-        return 1;
-    }
-
-    if (strcmp(raw->data, "i16") == 0) {
-        *out = I16;
-        return 1;
-    }
-
-    if (strcmp(raw->data, "u16") == 0) {
-        *out = U16;
-        return 1;
-    }
-
-    if (strcmp(raw->data, "i32") == 0) {
-        *out = I32;
-        return 1;
-    }
-
-    if (strcmp(raw->data, "u32") == 0) {
-        *out = U32;
-        return 1;
-    }
-
-    if (strcmp(raw->data, "i64") == 0) {
-        *out = I64;
-        return 1;
-    }
-
-    if (strcmp(raw->data, "u64") == 0) {
-        *out = U64;
-        return 1;
-    }
-
-    if (strcmp(raw->data, "usize") == 0) {
-        *out = USIZE;
-        return 1;
-    }
-
-    if (strcmp(raw->data, "f32") == 0) {
-        *out = F32;
-        return 1;
-    }
-
-    if (strcmp(raw->data, "f64") == 0) {
-        *out = F64;
-        return 1;
-    }
-
-    return 0;
+    UNREACHABLE("is_primitive fell out of a switch");
 }
 
 struct key_type_pair create_key_type_pair()
