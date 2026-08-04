@@ -190,7 +190,9 @@ int check_struct_soundness(struct type *type,
             if (list_char_eq(&visited.data[j].name, &field_name.name)) {
                 append_list_char_slice(error, "field `");
                 append_list_char_slice(error, field_name.name.data);
-                append_list_char_slice(error, "` already exists on struct.");
+                append_list_char_slice(error, "` already exists on struct `");
+                append_list_char_slice(error, type->name->data);
+                append_list_char_slice(error, "`.");
                 return 0;
             }
         }
@@ -217,6 +219,9 @@ int check_struct_soundness(struct type *type,
                                 append_list_char_slice(error, "`");
                                 append_list_char_slice(error, ref_name->data);
                                 append_list_char_slice(error, "` must be bound to a field of type `usize`");
+                                append_list_char_slice(error, " on struct `");
+                                append_list_char_slice(error, type->name->data);
+                                append_list_char_slice(error, "`.");
                                 return 0;
                             }
                         }
@@ -236,9 +241,11 @@ int check_struct_soundness(struct type *type,
                         continue;
                     }
 
-                    append_list_char_slice(error, "`");
+                    append_list_char_slice(error, "field `");
                     append_list_char_slice(error, pairs.data[i].field_name.data);
-                    append_list_char_slice(error, "` must have a pointer modifier");
+                    append_list_char_slice(error, "` of struct `");
+                    append_list_char_slice(error, type->name->data);
+                    append_list_char_slice(error, "` must have a pointer modifier or known length.");
                     return 0;
                 }
             }
