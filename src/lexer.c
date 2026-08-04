@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../lib/collections.h"
+#include "../lib/utils.h"
 
 struct file_buffer create_file_buffer(FILE *fstream, char *file_name)
 {
@@ -90,82 +91,28 @@ void read_until(struct file_buffer *b,
 
 int is_keyword(struct list_char *ident, enum token_type *out)
 {
-    if (strcmp(ident->data, "fn") == 0) {
-        *out = FN_KEYWORD;
-        return 1;
+    unsigned long hash = djb2_hash(ident->data);
+    switch (hash) {
+		case FN_KEYWORD:
+		case ENUM_KEYWORD:
+		case STRUCT_KEYWORD:
+		case IF_KEYWORD:
+		case WHILE_KEYWORD:
+		case RETURN_KEYWORD:
+		case BOOLEAN_TRUE_KEYWORD:
+		case BOOLEAN_FALSE_KEYWORD:
+		case ELSE_KEYWORD:
+		case BREAK_KEYWORD:
+		case MUTABLE_KEYWORD:
+		case NULL_KEYWORD:
+		case SWITCH_KEYWORD:
+		case CASE_KEYWORD:
+		case LET_KEYWORD:
+            *out = hash;
+            return 1;
+        default:
+            return 0;
     }
-
-    if (strcmp(ident->data, "enum") == 0) {
-        *out = ENUM_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "struct") == 0) {
-        *out = STRUCT_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "if") == 0) {
-        *out = IF_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "while") == 0) {
-        *out = WHILE_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "return") == 0) {
-        *out = RETURN_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "break") == 0) {
-        *out = BREAK_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "true") == 0) {
-        *out = BOOLEAN_TRUE_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "false") == 0) {
-        *out = BOOLEAN_FALSE_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "else") == 0) {
-        *out = ELSE_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "mut") == 0) {
-        *out = MUTABLE_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "null") == 0) {
-        *out = NULL_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "switch") == 0) {
-        *out = SWITCH_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "case") == 0) {
-        *out = CASE_KEYWORD;
-        return 1;
-    }
-
-    if (strcmp(ident->data, "let") == 0) {
-        *out = LET_KEYWORD;
-        return 1;
-    }
-
-    return 0;
 }
 
 int whitespace(char c)
@@ -514,8 +461,7 @@ struct token_buffer create_token_buffer(FILE *fstream, char *file_name)
     return (struct token_buffer) {
         .tokens = tokens,
         .size = tokens.size,
-        .current_position = 0,
-        .source = b
+        .current_position = 0
     };
 }
 

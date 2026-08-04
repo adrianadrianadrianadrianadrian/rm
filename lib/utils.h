@@ -16,4 +16,6 @@
         exit(1);                                                                \
     } while (0)
 
+unsigned long djb2_hash(char *input);
+
 #endif

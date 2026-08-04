@@ -28,22 +28,22 @@ enum token_type {
     PLUS,
     MINUS,
 
-    // keywords
-    FN_KEYWORD,
-    ENUM_KEYWORD,
-    STRUCT_KEYWORD,
-    IF_KEYWORD,
-    WHILE_KEYWORD,
-    RETURN_KEYWORD,
-    BOOLEAN_TRUE_KEYWORD,
-    BOOLEAN_FALSE_KEYWORD,
-    ELSE_KEYWORD,
-    BREAK_KEYWORD,
-    MUTABLE_KEYWORD,
-    NULL_KEYWORD,
-    SWITCH_KEYWORD,
-    CASE_KEYWORD,
-    LET_KEYWORD,
+    // keywords           djb2_hash value
+    FN_KEYWORD            = 5863385L,
+    ENUM_KEYWORD          = 6385194298L,
+    STRUCT_KEYWORD        = 6954031505834L,
+    IF_KEYWORD            = 5863476L,
+    WHILE_KEYWORD         = 210732529790L,
+    RETURN_KEYWORD        = 6953974653989L,
+    BOOLEAN_TRUE_KEYWORD  = 6385737701L,
+    BOOLEAN_FALSE_KEYWORD = 210712121072L,
+    ELSE_KEYWORD          = 6385192046L,
+    BREAK_KEYWORD         = 210707980106L,
+    MUTABLE_KEYWORD       = 193499675L,
+    NULL_KEYWORD          = 6385525056L,
+    SWITCH_KEYWORD        = 6954034739063L,
+    CASE_KEYWORD          = 6385108193L,
+    LET_KEYWORD           = 193498058L,
 
     // parens
     OPEN_ROUND_PAREN,
@@ -91,7 +91,6 @@ struct token_buffer {
     struct list_token tokens;
     size_t current_position;
     size_t size;
-    struct file_buffer source;
 };
 
 struct token_buffer create_token_buffer(FILE *fstream, char *file_name);
