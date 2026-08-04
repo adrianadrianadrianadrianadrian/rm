@@ -29,21 +29,21 @@ enum token_type {
     MINUS,
 
     // keywords           djb2_hash value
-    FN_KEYWORD            = 5863385L,
-    ENUM_KEYWORD          = 6385194298L,
-    STRUCT_KEYWORD        = 6954031505834L,
-    IF_KEYWORD            = 5863476L,
-    WHILE_KEYWORD         = 210732529790L,
-    RETURN_KEYWORD        = 6953974653989L,
-    BOOLEAN_TRUE_KEYWORD  = 6385737701L,
-    BOOLEAN_FALSE_KEYWORD = 210712121072L,
-    ELSE_KEYWORD          = 6385192046L,
-    BREAK_KEYWORD         = 210707980106L,
-    MUTABLE_KEYWORD       = 193499675L,
-    NULL_KEYWORD          = 6385525056L,
-    SWITCH_KEYWORD        = 6954034739063L,
-    CASE_KEYWORD          = 6385108193L,
-    LET_KEYWORD           = 193498058L,
+    FN_KEYWORD            = 5863385L,       // fn
+    ENUM_KEYWORD          = 6385194298L,    // enum
+    STRUCT_KEYWORD        = 6954031505834L, // struct
+    IF_KEYWORD            = 5863476L,       // if
+    WHILE_KEYWORD         = 210732529790L,  // while
+    RETURN_KEYWORD        = 6953974653989L, // return
+    BOOLEAN_TRUE_KEYWORD  = 6385737701L,    // true
+    BOOLEAN_FALSE_KEYWORD = 210712121072L,  // false
+    ELSE_KEYWORD          = 6385192046L,    // else
+    BREAK_KEYWORD         = 210707980106L,  // break
+    MUTABLE_KEYWORD       = 193499675L,     // mut
+    NULL_KEYWORD          = 6385525056L,    // null
+    SWITCH_KEYWORD        = 6954034739063L, // switch
+    CASE_KEYWORD          = 6385108193L,    // case
+    LET_KEYWORD           = 193498058L,     // let
 
     // parens
     OPEN_ROUND_PAREN,
