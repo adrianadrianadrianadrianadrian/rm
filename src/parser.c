@@ -1171,17 +1171,7 @@ int parse_if_statement(struct parser_state *s,
     struct statement *else_statement = NULL;
 
     if (!get_token_type(s->buffer, &tmp, IF_KEYWORD)) return 0;
-    if (!get_token_type(s->buffer, &tmp, OPEN_ROUND_PAREN)) {
-        add_error_inner(s->buffer, error, "`if` must be followed by a predicate within round parentheses.");
-        return 0;
-    }
-
     if (!parse_expression(s, &condition, error)) return 0;
-    if (!get_token_type(s->buffer, &tmp, CLOSE_ROUND_PAREN)) {
-        add_error_inner(s->buffer, error, "missing a closing round parenthesis, `)`.");
-        return 0;
-    }
-
     if (!parse_block_statement(s, success_statement, error)) {
         add_error_inner(s->buffer, error, "invalid success branch within the `if` statement.");
         return 0;
