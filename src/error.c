@@ -30,12 +30,20 @@ void add_error(unsigned int row,
     *out = err;
 }
 
+void repeat(FILE *f, char c, size_t times)
+{
+    for (size_t i = 0; i < times; i++) {
+        fputc(c, f);
+    }
+}
+
 void write_error_inner(FILE *f, struct error *err, unsigned int depth)
 {
     if (!err->errored) {
         return;
     }
 
+    repeat(f, ' ', depth);
     fprintf(f, "%s:%d:%d: %sERROR:%s %s\n",
         err->file_name,
         err->row,

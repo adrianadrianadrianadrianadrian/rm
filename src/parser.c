@@ -37,6 +37,12 @@ int try_parse(struct parser_state *s,
     return 1;
 }
 
+void add_error_from_metadata(struct statement_metadata metadata,
+                             struct error *out, char *message)
+{
+    add_error(metadata.row, metadata.col, metadata.file_name, out, message);
+}
+
 void add_error_inner(struct token_buffer *s, struct error *out, char *message)
 {
     size_t position = s->current_position;
@@ -221,24 +227,24 @@ int parse_function_type(struct parser_state *s,
     };
 
     if (named && !get_token_type(s->buffer, &name, IDENTIFIER)) {
-        add_error_inner(s->buffer, error, "a function must have a name in this position.");
+        add_error_inner(s->buffer, error, "a function must have a name in this position");
         return 0;
     }
 
     if (!get_token_type(s->buffer, &tmp, OPEN_ROUND_PAREN)) {
-        add_error_inner(s->buffer, error, "missing `(`.");
+        add_error_inner(s->buffer, error, "missing `(`");
         return 0;
     }
 
     parse_key_type_pairs(s, &params, error);
     if (!get_token_type(s->buffer, &tmp, CLOSE_ROUND_PAREN)) {
-        add_error_inner(s->buffer, error, "missing `)`.");
+        add_error_inner(s->buffer, error, "missing `)`");
         return 0;
     }
 
     if (get_token_type(s->buffer, &tmp, RIGHT_ARROW)) {
         if (!parse_type(s, return_type, 0, 1, error)) {
-            add_error_inner(s->buffer, error, "unknown return type.");
+            add_error_inner(s->buffer, error, "unknown return type");
             return 0;
         }
     }
@@ -266,19 +272,19 @@ int parse_struct_type(struct parser_state *s,
     struct list_key_type_pair pairs = list_create(key_type_pair, 10);
 
     if (!get_token_type(s->buffer, &name, IDENTIFIER)) {
-        add_error_inner(s->buffer, error, "a struct must have a name.");
+        add_error_inner(s->buffer, error, "a struct must have a name");
         return 0;
     }
 
     if (!predefined_type) {
         if (!get_token_type(s->buffer, &tmp, OPEN_CURLY_PAREN)) {
-            add_error_inner(s->buffer, error, "a struct definition must have a body.");
+            add_error_inner(s->buffer, error, "a struct definition must have a body");
             return 0;
         }
 
         if (!parse_key_type_pairs(s, &pairs, error) && error->errored) return 0;
         if (!get_token_type(s->buffer, &tmp, CLOSE_CURLY_PAREN)) {
-            add_error_inner(s->buffer, error, "missing a `}`.");
+            add_error_inner(s->buffer, error, "missing a `}`");
             return 0;
         }
     }
@@ -306,19 +312,19 @@ int parse_enum_type(struct parser_state *s,
     struct list_key_type_pair pairs = list_create(key_type_pair, 10);
 
     if (!get_token_type(s->buffer, &name, IDENTIFIER)) {
-        add_error_inner(s->buffer, error, "a enum must have a name.");
+        add_error_inner(s->buffer, error, "a enum must have a name");
         return 0;
     }
 
     if (!predefined_type) {
         if (!get_token_type(s->buffer, &tmp, OPEN_CURLY_PAREN)) {
-            add_error_inner(s->buffer, error, "a enum definition must have a body.");
+            add_error_inner(s->buffer, error, "a enum definition must have a body");
             return 0;
         }
 
         if (!parse_key_type_pairs(s, &pairs, error) && error->errored) return 0;
         if (!get_token_type(s->buffer, &tmp, CLOSE_CURLY_PAREN)) {
-            add_error_inner(s->buffer, error, "missing a `}`.");
+            add_error_inner(s->buffer, error, "missing a `}`");
             return 0;
         }
     }
@@ -649,7 +655,7 @@ int parse_function_expression(struct parser_state *s,
     }
 
     if (!get_token_type(s->buffer, &tmp, CLOSE_ROUND_PAREN)) {
-        add_error_inner(s->buffer, error, "expected a `)`.");
+        add_error_inner(s->buffer, error, "expected a `)`");
         return 0;
     }
 
@@ -962,7 +968,7 @@ int parse_break_statement(struct parser_state *s, struct statement *out, struct 
     struct token tmp = {0};
     if (!get_token_type(s->buffer, &tmp, BREAK_KEYWORD)) return 0;
     if (!get_token_type(s->buffer, &tmp, SEMICOLON)) {
-        add_error_inner(s->buffer, error, "a break statement must end with a semicolon.");
+        add_error_inner(s->buffer, error, "a break statement must end with a semicolon");
         return 0;
     }
 
@@ -997,12 +1003,12 @@ int parse_return_statement(struct parser_state *s,
             return 1;
         }
 
-        add_error_inner(s->buffer, error, "a return statement must return a valid expression.");
+        add_error_inner(s->buffer, error, "a return statement must return a valid expression");
         return 0;
     }
 
     if (!get_token_type(s->buffer, &tmp, SEMICOLON)) {
-        add_error_inner(s->buffer, error, "a statement must end with a semicolon.");
+        add_error_inner(s->buffer, error, "a statement must end with a semicolon");
         return 0;
     }
 
@@ -1028,7 +1034,7 @@ int parse_binding_statement(struct parser_state *s,
 
     if (!get_token_type(s->buffer, &tmp, LET_KEYWORD)) return 0;
     if (!get_token_type(s->buffer, &tmp, IDENTIFIER)) {
-        add_error_inner(s->buffer, error, "a let binding must have a name.");
+        add_error_inner(s->buffer, error, "a let binding must have a name");
         return 0;
     }
     variable_name = *tmp.identifier;
@@ -1040,19 +1046,19 @@ int parse_binding_statement(struct parser_state *s,
                 append_list_char_slice(&error_message, "unknown type");
                 append_list_char_slice(&error_message, " `");
                 append_list_char_slice(&error_message, tmp.identifier->data);
-                append_list_char_slice(&error_message, "`.");
+                append_list_char_slice(&error_message, "`");
                 add_error_inner(s->buffer, error, error_message.data);
                 return 0;
             }
 
-            add_error_inner(s->buffer, error, "a type annotation is required after a `:` in a binding statement.");
+            add_error_inner(s->buffer, error, "a type annotation is required after a `:` in a binding statement");
             return 0;
         }
         has_type = 1;
     }
 
     if (!get_token_type(s->buffer, &tmp, EQ)) {
-        add_error_inner(s->buffer, error, "expected a `=`.");
+        add_error_inner(s->buffer, error, "expected a `=`");
         return 0;
     }
 
@@ -1060,13 +1066,13 @@ int parse_binding_statement(struct parser_state *s,
         struct list_char msg = list_create(char, 50);
         append_list_char_slice(&msg, "the variable `");
         append_list_char_slice(&msg, variable_name.data);
-        append_list_char_slice(&msg, "` must be bound to a valid expression.");
+        append_list_char_slice(&msg, "` must be bound to a valid expression");
         add_error_inner(s->buffer, error, msg.data);
         return 0; 
     }
 
     if (!get_token_type(s->buffer, &tmp, SEMICOLON)) {
-        add_error_inner(s->buffer, error, "a binding statement must end with a semicolon.");
+        add_error_inner(s->buffer, error, "a binding statement must end with a semicolon");
         return 0;
     }
 
@@ -1100,7 +1106,14 @@ int parse_block_statement(struct parser_state *s,
         if (parse_statement(s, &statement, error)) {
             list_append(statements, statement);
         } else {
-            return 0;
+            if (error->errored) {
+                return 0;
+            }
+            if (!get_token_type(s->buffer, &tmp, CLOSE_CURLY_PAREN)) {
+                add_error_inner(s->buffer, error, "missing closing curly bracket");
+                return 0;
+            }
+            break;
         }
 
         if (get_token_type(s->buffer, &tmp, CLOSE_CURLY_PAREN)) {
@@ -1130,7 +1143,7 @@ int parse_if_statement(struct parser_state *s,
     if (!get_token_type(s->buffer, &tmp, IF_KEYWORD)) return 0;
     if (!parse_expression(s, &condition, error)) return 0;
     if (!parse_block_statement(s, success_statement, error)) {
-        add_error_inner(s->buffer, error, "invalid success branch within the `if` statement.");
+        add_error_inner(s->buffer, error, "invalid success branch within the `if` statement");
         return 0;
     }
 
@@ -1139,7 +1152,7 @@ int parse_if_statement(struct parser_state *s,
         if (!parse_if_statement(s, else_statement, error) &&
             !parse_block_statement(s, else_statement, error))
         {
-            add_error_inner(s->buffer, error, "invalid else branch within the `if` statement.");
+            add_error_inner(s->buffer, error, "invalid else branch within the `if` statement");
             return 0;
         }
     }
@@ -1164,7 +1177,7 @@ int parse_action_statement(struct parser_state *s, struct statement *out, struct
     struct expression expression = {0};
     if (!parse_expression(s, &expression, error)) return 0;
     if (!get_token_type(s->buffer, &tmp, SEMICOLON)) {
-        add_error_inner(s->buffer, error, "an action statement must end with a semicolon.");
+        add_error_inner(s->buffer, error, "an action statement must end with a semicolon");
         return 0;
     }
 
@@ -1187,19 +1200,9 @@ int parse_while_loop_statement(struct parser_state *s,
     struct expression expression = {0};
 
     if (!get_token_type(s->buffer, &tmp, WHILE_KEYWORD)) return 0;
-    if (!get_token_type(s->buffer, &tmp, OPEN_ROUND_PAREN)) {
-        add_error_inner(s->buffer, error, "`while` must be followed by a predicate within round parentheses.");
-        return 0;
-    }
-
     if (!parse_expression(s, &expression, error)) return 0;
-    if (!get_token_type(s->buffer, &tmp, CLOSE_ROUND_PAREN)) {
-        add_error_inner(s->buffer, error, "missing a closing round parenthesis, `)`.");
-        return 0;
-    }
-
     if (!parse_block_statement(s, do_statement, error)) {
-        add_error_inner(s->buffer, error, "invalid while block.");
+        add_error_from_metadata(metadata, error, "invalid while block");
         return 0;
     }
 
@@ -1238,7 +1241,7 @@ int parse_type_declaration(struct parser_state *s,
 
     struct statement body = {0};
     if (!parse_block_statement(s, &body, error)) {
-        add_error_inner(s->buffer, error, "a function must have a valid body.");
+        add_error_from_metadata(metadata, error, "invalid function body");
         return 0;
     }
 
