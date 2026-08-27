@@ -54,7 +54,7 @@ int check_literal_expression_soundness(struct literal_expression *e,
 
             append_list_char_slice(error, "`");
             append_list_char_slice(error, e->name->data);
-            append_list_char_slice(error, "` is not in the current scope.");
+            append_list_char_slice(error, "` is not in the current scope");
             return 0;
         }
         case LITERAL_STRUCT:
@@ -70,12 +70,12 @@ int check_literal_expression_soundness(struct literal_expression *e,
                     } else if (data_type->kind != TY_STRUCT) {
                         pairs = &data_type->struct_type.pairs;
                     } else {
-                        UNREACHABLE("data types are either enums or structs.");
+                        UNREACHABLE("data types are either enums or structs");
                     }
                     assert(pairs);
 
                     if (pairs->size < e->struct_enum.key_expr_pairs.size) {
-                        append_list_char_slice(error, "too many fields provided.");
+                        append_list_char_slice(error, "too many fields provided");
                         return 0;
                     }
 
@@ -99,7 +99,7 @@ int check_literal_expression_soundness(struct literal_expression *e,
                         if (!found) {
                             append_list_char_slice(error, "required field `");
                             append_list_char_slice(error, pairs->data[p].field_name.data);
-                            append_list_char_slice(error, "` is missing.");
+                            append_list_char_slice(error, "` is missing");
                             return 0;
                         }
                     }
@@ -118,7 +118,7 @@ int check_literal_expression_soundness(struct literal_expression *e,
             return 1;
     }
 
-    UNREACHABLE("dropped out of check_literal_expression_soundnes switch.");
+    UNREACHABLE("dropped out of check_literal_expression_soundnes switch");
 }
 
 int expression_is_literal_name(struct expression *e)
@@ -174,7 +174,7 @@ int check_struct_soundness(struct type *type,
             if (struct_count > 1) {
                 append_list_char_slice(error, "`struct ");
                 append_list_char_slice(error, type->name->data);
-                append_list_char_slice(error, "` already exists.");
+                append_list_char_slice(error, "` already exists");
                 return 0;
             }
         }
@@ -192,7 +192,7 @@ int check_struct_soundness(struct type *type,
                 append_list_char_slice(error, field_name.name.data);
                 append_list_char_slice(error, "` already exists on struct `");
                 append_list_char_slice(error, type->name->data);
-                append_list_char_slice(error, "`.");
+                append_list_char_slice(error, "`");
                 return 0;
             }
         }
@@ -221,7 +221,7 @@ int check_struct_soundness(struct type *type,
                                 append_list_char_slice(error, "` must be bound to a field of type `usize`");
                                 append_list_char_slice(error, " on struct `");
                                 append_list_char_slice(error, type->name->data);
-                                append_list_char_slice(error, "`.");
+                                append_list_char_slice(error, "`");
                                 return 0;
                             }
                         }
@@ -245,7 +245,7 @@ int check_struct_soundness(struct type *type,
                     append_list_char_slice(error, pairs.data[i].field_name.data);
                     append_list_char_slice(error, "` of struct `");
                     append_list_char_slice(error, type->name->data);
-                    append_list_char_slice(error, "` must have a pointer modifier or known length.");
+                    append_list_char_slice(error, "` must have a pointer modifier or known length");
                     return 0;
                 }
             }
@@ -290,7 +290,7 @@ int check_binding_statement_soundness(struct statement *s,
         if (list_char_eq(binding_name, &scoped_variables->data[i].name)) {
             append_list_char_slice(&error_message, "the binding name `");
             append_list_char_slice(&error_message, binding_name->data);
-            append_list_char_slice(&error_message, "` is already defined in this scope.");
+            append_list_char_slice(&error_message, "` is already defined in this scope");
             struct statement_metadata metadata =
                 lut_get(&global_context->metadata_lookup, s->id);
             add_error_inner(&metadata, error_message.data, error);
@@ -302,7 +302,7 @@ int check_binding_statement_soundness(struct statement *s,
         if (list_char_eq(binding_name, global_context->fn_types.data[i].name)) {
             append_list_char_slice(&error_message, "the binding name `");
             append_list_char_slice(&error_message, binding_name->data);
-            append_list_char_slice(&error_message, "` conflicts with a function in this scope.");
+            append_list_char_slice(&error_message, "` conflicts with a function in this scope");
             struct statement_metadata metadata =
                 lut_get(&global_context->metadata_lookup, s->id);
             add_error_inner(&metadata, error_message.data, error);
@@ -484,15 +484,16 @@ int check_statement_soundness(struct statement *s,
         case WHILE_LOOP_STATEMENT:
             return check_while_statement_soundness(s, global_context, context, error);
         case BREAK_STATEMENT:
+            return 1;
         case SWITCH_STATEMENT:
             return 0;
         case C_BLOCK_STATEMENT:
             return 1;
         case TYPE_DECLARATION_STATEMENT:
-            UNREACHABLE("top level statements shouldn't be here.");
+            UNREACHABLE("top level statements shouldn't be here");
         }
 
-    UNREACHABLE("dropped out of switch in check_statement_soundness.");
+    UNREACHABLE("dropped out of switch in check_statement_soundness");
 }
 
 
@@ -546,14 +547,14 @@ int soundness_check(struct parsed_file *parsed_file,
                         break;
                     }
                     case TY_PRIMITIVE:
-                        UNREACHABLE("TY_PRIMITIVE shouldn't have made it here via parsing.");
+                        UNREACHABLE("TY_PRIMITIVE shouldn't have made it here via parsing");
                     case TY_ANY:
-                        UNREACHABLE("TY_ANY shouldn't have made it here via parsing.");
+                        UNREACHABLE("TY_ANY shouldn't have made it here via parsing");
                 }
                 break;
             }
             default:
-                UNREACHABLE("statement shouldn't have made it here via parsing.");
+                UNREACHABLE("statement shouldn't have made it here via parsing");
         }
     }
 

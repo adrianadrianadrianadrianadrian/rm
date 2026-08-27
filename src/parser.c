@@ -1110,7 +1110,7 @@ int parse_block_statement(struct parser_state *s,
                 return 0;
             }
             if (!get_token_type(s->buffer, &tmp, CLOSE_CURLY_PAREN)) {
-                add_error_inner(s->buffer, error, "missing closing curly bracket");
+                add_error_inner(s->buffer, error, "expected a closing curly bracket here");
                 return 0;
             }
             break;

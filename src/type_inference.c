@@ -413,6 +413,7 @@ int infer_expression_type(struct expression *e,
                 .kind = TY_PRIMITIVE,
                 .primitive_type = VOID
             };
+            lut_add(&context->expression_type_lookup, e->id, *out);
             return 1;
         }
     }
@@ -427,10 +428,6 @@ int infer_full_type(struct type *incomplete_type,
                     struct list_char *error)
 {
     switch (incomplete_type->kind) {
-        case TY_FUNCTION:
-        {
-            TODO("infer full type for functions. e.g a_param: fn read_all");
-        }
         case TY_STRUCT:
         {
             return find_struct_definition(global_context, incomplete_type->name, out, error);
@@ -439,6 +436,7 @@ int infer_full_type(struct type *incomplete_type,
         {
             return find_enum_definition(global_context, incomplete_type->name, out, error);
         }
+        case TY_FUNCTION:
         case TY_ANY:
         case TY_PRIMITIVE:
         {
