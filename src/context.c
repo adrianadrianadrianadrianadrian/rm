@@ -320,8 +320,6 @@ int contextualise(struct parsed_file *parsed_file, struct context *out, struct e
         .expression_type_lookup = lut_create(type, 100),
         .statement_scope_lookup = lut_create(statement_scope, 100)
     };
-    assert(parsed_file->statements.size > 0);
-
     for (size_t i = 0; i < parsed_file->statements.size; i++) {
         if (!contextualise_statement(&parsed_file->statements.data[i],
                                      &parsed_file->global_context,
