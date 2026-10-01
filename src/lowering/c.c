@@ -5,6 +5,9 @@
 #include <regex.h>
 #include "../../lib/utils.h"
 #include <math.h>
+#include <stdio.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 void write_type(struct type *ty, FILE *file);
 
@@ -763,7 +766,9 @@ void generate_c_header(struct parsed_file *parsed_file)
 void generate_c(struct parsed_file *parsed_file,
                 struct context *context)
 {
-    // TODO
-    // generate_c_header(parsed_file);
-    // generate_c_file(parsed_file, context);
+    remove("target/c_output.h");
+    remove("target/c_output.c");
+    mkdir("target", S_IRWXU | S_IRWXG | S_IRWXO);
+    generate_c_header(parsed_file);
+    generate_c_file(parsed_file, context);
 }

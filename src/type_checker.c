@@ -49,7 +49,6 @@ int fn_type_eq(struct function_type *l, struct function_type *r)
         return 0;
     }
 
-    assert(l->params.size == r->params.size);
     for (size_t i = 0; i < l->params.size; i++) {
         if (!type_eq(l->params.data[i].field_type, r->params.data[i].field_type)) return 0;
     }
@@ -93,6 +92,15 @@ struct list_type_modifier pop(struct list_type_modifier *modifiers)
     return output;
 }
 
+int kind_eq(enum type_kind l, enum type_kind r)
+{
+    if (l == TY_ANY || r == TY_ANY) {
+        return 1;
+    }
+
+    return l == r;
+}
+
 int type_eq(struct type *l, struct type *r)
 {
     assert(l);
@@ -100,57 +108,51 @@ int type_eq(struct type *l, struct type *r)
     assert(l->kind);
     assert(r->kind);
 
+    if (!kind_eq(l->kind, r->kind)) {
+        return 0;
+    }
+
     if (r->modifiers.size > l->modifiers.size) {
         return type_eq(r, l);
     }
 
-    switch (l->modifiers.size) {
-        case 0:
-        {
-            if (r->kind == TY_ANY) {
-                return 1;
-            }
+    if (l->modifiers.size > 0) {
+        struct list_type_modifier l_popped = pop(&l->modifiers);
+        struct type *l_updated = malloc(sizeof(*l_updated));
+        *l_updated = *l;
+        l_updated->modifiers = l_popped;
 
-            switch (l->kind) {
-                case TY_PRIMITIVE:
-                    return l->primitive_type == r->primitive_type;
-                case TY_STRUCT:
-                    return list_char_eq(l->name, r->name);
-                case TY_FUNCTION:
-                    return fn_type_eq(&l->function_type, &r->function_type);
-                case TY_ENUM:
-                    return list_char_eq(l->name, r->name);
-                case TY_ANY:
-                    return 1;
-            }
-            break;
+        if (r->modifiers.size > 0) {
+            if (!type_modifier_eq(&l->modifiers.data[0], &r->modifiers.data[0])) return 0;
+            struct list_type_modifier r_popped = pop(&r->modifiers);
+            struct type *r_updated = malloc(sizeof(*r_updated));
+            *r_updated = *r;
+            r_updated->modifiers = r_popped;
+            return type_eq(l_updated, r_updated);
         }
-        default:
+
+        if (l->modifiers.data[0].kind == NULLABLE_MODIFIER_KIND
+            && r->modifiers.size == 0)
         {
-            struct list_type_modifier l_popped = pop(&l->modifiers);
-            struct type *l_updated = malloc(sizeof(*l_updated));
-            *l_updated = *l;
-            l_updated->modifiers = l_popped;
-
-            if (r->modifiers.size > 0) {
-                if (!type_modifier_eq(&l->modifiers.data[0], &r->modifiers.data[0])) return 0;
-                struct list_type_modifier r_popped = pop(&r->modifiers);
-                struct type *r_updated = malloc(sizeof(*r_updated));
-                *r_updated = *r;
-                r_updated->modifiers = r_popped;
-                return type_eq(l_updated, r_updated);
+            if (l->kind != TY_ANY && r->kind != TY_ANY) {
+                return type_eq(l_updated, r);
             }
-
-            if (l->modifiers.data[0].kind == NULLABLE_MODIFIER_KIND
-                && r->modifiers.size == 0)
-            {
-                if (l->kind != TY_ANY && r->kind != TY_ANY) {
-                    return type_eq(l_updated, r);
-                }
-            }
-
-            return 0;
         }
+
+        return 0;
+    }
+
+    switch (l->kind) {
+        case TY_PRIMITIVE:
+            return l->primitive_type == r->primitive_type;
+        case TY_STRUCT:
+            return list_char_eq(l->name, r->name);
+        case TY_FUNCTION:
+            return fn_type_eq(&l->function_type, &r->function_type);
+        case TY_ENUM:
+            return list_char_eq(l->name, r->name);
+        case TY_ANY:
+            return 1;
     }
 
     UNREACHABLE("type_eq_new");

@@ -354,7 +354,9 @@ int infer_expression_type(struct expression *e,
             for (size_t i = 0; i < global_context->fn_types.size; i++) {
                 struct type *global_fn = &global_context->fn_types.data[i];
                 if (list_char_eq(e->function.function_name, global_context->fn_types.data[i].name)) {
-                    return infer_function_type(global_fn, global_context, value_count, out, error);
+                    if (!infer_function_type(global_fn, global_context, value_count, out, error)) return 0;
+                    lut_add(&context->expression_type_lookup, e->id, *out);
+                    return 1;
                 }
             }
 
@@ -362,7 +364,9 @@ int infer_expression_type(struct expression *e,
                 struct type *fn = &scoped_variables->data[i].type;
                 if (fn->kind == TY_FUNCTION) {
                     if (list_char_eq(e->function.function_name, &scoped_variables->data[i].name)) {
-                        return infer_function_type(fn, global_context, value_count, out, error);
+                        if (!infer_function_type(fn, global_context, value_count, out, error)) return 0;
+                        lut_add(&context->expression_type_lookup, e->id, *out);
+                        return 1;
                     }
                 }
             }

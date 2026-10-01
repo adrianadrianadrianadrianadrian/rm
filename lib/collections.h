@@ -17,9 +17,9 @@
 
 #define list_create(ty, cap)                                \
     (struct LIST_NAME(ty)) {                                \
-        .data = malloc(sizeof(ty) * cap),                   \
+        .data = malloc(sizeof(ty) * (cap)),                 \
         .size = 0,                                          \
-        .capacity = cap > 0 ? cap : 1                       \
+        .capacity = (cap) > 0 ? (cap) : 1                   \
     }
 
 #define list_append(l, item)                                \

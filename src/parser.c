@@ -22,7 +22,7 @@ struct parser_state {
 int try_parse(struct parser_state *s,
               void *out,
               struct error *error,
-              int (*parser)(struct parser_state *, void *, struct error *error))
+              int (*parser)(struct parser_state *ps, void *out, struct error *error))
 {
     if (error->errored) {
         return 0;
@@ -1226,23 +1226,23 @@ int parse_type_declaration(struct parser_state *s,
     struct type type = {0};
 
     if (!parse_type(s, &type, 1, 0, error)) return 0;
-    if (type.kind != TY_FUNCTION) {
+    if (type.kind == TY_FUNCTION) {
+        struct statement body = {0};
+        if (!parse_block_statement(s, &body, error)) {
+            add_error_from_metadata(metadata, error, "invalid function body");
+            return 0;
+        }
+
         *out = (struct statement) {
             .kind = TYPE_DECLARATION_STATEMENT,
             .id = s->next_statement_id++,
             .type_declaration = (struct type_declaration_statement) {
                 .type = type,
-                .statements = NULL
+                .statements = body.statements
             }
         };
         lut_add(s->metadata_lookup, out->id, metadata);
         return 1;
-    }
-
-    struct statement body = {0};
-    if (!parse_block_statement(s, &body, error)) {
-        add_error_from_metadata(metadata, error, "invalid function body");
-        return 0;
     }
 
     *out = (struct statement) {
@@ -1250,7 +1250,7 @@ int parse_type_declaration(struct parser_state *s,
         .id = s->next_statement_id++,
         .type_declaration = (struct type_declaration_statement) {
             .type = type,
-            .statements = body.statements
+            .statements = NULL
         }
     };
     lut_add(s->metadata_lookup, out->id, metadata);
@@ -1377,6 +1377,28 @@ void add_type_declarations(struct parser_state *state,
     }
 }
 
+void add_top_level_error(struct token_buffer *b,
+                         struct error *error)
+{
+    struct token tmp = {0};
+    if (get_token(b, &tmp)) {
+        switch (tmp.token_type)
+        {
+            case FN_KEYWORD:
+            case ENUM_KEYWORD:
+            case STRUCT_KEYWORD:
+                return;
+            default:
+            {
+                struct list_char error_message = list_create(char, 100);
+                append_list_char_slice(&error_message, "expected `fn`, `struct` or `enum`");
+                add_error_inner(b, error, error_message.data);
+                return;
+            }
+        }
+    }
+}
+
 int parse_file(struct token_buffer *s,
                struct parsed_file *out,
                struct error *error)
@@ -1401,6 +1423,7 @@ int parse_file(struct token_buffer *s,
             list_append(&statements, statement);
             add_type_declarations(&state, &statement);
         } else {
+            add_top_level_error(state.buffer, error);
             return 0;
         }
     }

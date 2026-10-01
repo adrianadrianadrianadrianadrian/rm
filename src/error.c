@@ -20,7 +20,7 @@ void add_error(unsigned int row,
 
     struct error err = (struct error) {
         .row = row,
-        .col = row,
+        .col = col,
         .file_name = file_name,
         .errored = 1,
         .error_message = error_message,

@@ -314,7 +314,9 @@ int contextualise_statement(struct statement *s,
     }
 }
 
-int contextualise(struct parsed_file *parsed_file, struct context *out, struct error *error)
+int contextualise(struct parsed_file *parsed_file,
+                  struct context *out,
+                  struct error *error)
 {
     struct context output = {
         .expression_type_lookup = lut_create(type, 100),
