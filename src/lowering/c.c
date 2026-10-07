@@ -733,6 +733,7 @@ static void generate_c_file(struct parsed_file *file, struct context *context)
 			}
         }
     }
+    fclose(output_file);
 }
 
 void generate_c_header(struct parsed_file *parsed_file)

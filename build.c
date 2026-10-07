@@ -16,25 +16,6 @@ struct_list(string);
         exit(1);                          \
     } while (0)
 
-struct list_char read_file_to_string(const char *filename)
-{
-    FILE *file = fopen(filename, "r");
-    if (!file) {
-        ERROR("issue opening `%s`", filename);
-    }
-
-    struct list_char output = list_create(char, 100);
-    char buf[1024] = {0};
-    size_t read_amount = 0;
-    while ((read_amount = fread(&buf, sizeof(char), sizeof(*buf), file))) {
-        for (int i = 0; i < read_amount; ++i) {
-            list_append(&output, buf[i]);
-        }
-    }
-
-    return output;
-}
-
 struct list_char from_slice(char *slice)
 {
     size_t len = strlen(slice);

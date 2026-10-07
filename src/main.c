@@ -27,6 +27,7 @@ int compile(char *file_name, struct error *error)
     if (!type_check(&parsed, &c, error))      return 0;
     generate_c(&parsed, &c);
 
+    fclose(f);
     return 1;
 }
 

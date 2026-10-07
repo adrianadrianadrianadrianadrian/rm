@@ -142,6 +142,11 @@ int type_eq(struct type *l, struct type *r)
         return 0;
     }
 
+    if (l->kind == TY_ANY || r->kind == TY_ANY)
+    {
+        return 1;
+    }
+
     switch (l->kind) {
         case TY_PRIMITIVE:
             return l->primitive_type == r->primitive_type;
